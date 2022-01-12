@@ -14,7 +14,7 @@ pictl usernew user2@example.com user2 password --verify
 
 #User3 paywall not paid
 pictl usernew user3@example.com user3 password --verify
-
+# test
 #Paywall
 adminuser_uuid=`pictl login adminuser@example.com password | \
   jq -r "select(.userid).userid"`
