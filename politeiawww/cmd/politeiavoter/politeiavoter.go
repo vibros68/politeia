@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -659,7 +660,6 @@ func (p *piv) inventory() error {
 		if err != nil {
 			return err
 		}
-
 		// Ensure eligibility
 		tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
 		if err != nil {
@@ -710,16 +710,8 @@ func (p *piv) inventory() error {
 		fmt.Printf("  Mask            : %v\n", dr.Vote.Params.Mask)
 		fmt.Printf("  Eligible tickets: %v\n", len(ctres.TicketAddresses))
 		fmt.Printf("  Eligible votes  : %v\n", len(eligible))
-		for _, vo := range dr.Vote.Params.Options {
-			fmt.Printf("  Vote Option:\n")
-			fmt.Printf("    Id                   : %v\n", vo.ID)
-			fmt.Printf("    Description          : %v\n",
-				vo.Description)
-			fmt.Printf("    Bit                  : %v\n", vo.Bit)
-			fmt.Printf("    To choose this option: "+
-				"politeiavoter vote %v %v\n", dr.Vote.Params.Token,
-				vo.ID)
-		}
+		fmt.Printf("  Vote Option:\n")
+		fmt.Printf("    politeiavoter vote %v yes 0.67 no 0.34\n", dr.Vote.Params.Token)
 	}
 
 	return nil
@@ -796,7 +788,7 @@ func (p *piv) dumpTogo() {
 	panic("dumpTogo")
 }
 
-func (p *piv) _vote(token, voteID string) error {
+func (p *piv) _vote(token, voteID string, quantity int) error {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
 		return err
@@ -825,6 +817,7 @@ func (p *piv) _vote(token, voteID string) error {
 	if !ok {
 		return fmt.Errorf("proposal does not exist: %v", token)
 	}
+
 	if vs.Status != tkv1.VoteStatusStarted {
 		return fmt.Errorf("proposal vote is not active: %v", vs.Status)
 	}
@@ -917,6 +910,9 @@ func (p *piv) _vote(token, voteID string) error {
 			VoteBit: voteBit,
 			// Signature set from reply below.
 		})
+		if len(votesToCast) == quantity {
+			break
+		}
 	}
 
 	// Sign all messages that comprise the votes.
@@ -924,11 +920,11 @@ func (p *piv) _vote(token, voteID string) error {
 		Passphrase: passphrase,
 		Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(votesToCast)),
 	}
-	for k, v := range ctres.TicketAddresses {
-		cv := &votesToCast[k]
+	for k, v := range votesToCast {
+		cv := &v
 		msg := cv.Token + cv.Ticket + cv.VoteBit
 		sm.Messages = append(sm.Messages, &pb.SignMessagesRequest_Message{
-			Address: v.Address,
+			Address: ctres.TicketAddresses[k].Address,
 			Message: msg,
 		})
 	}
@@ -936,7 +932,6 @@ func (p *piv) _vote(token, voteID string) error {
 	if err != nil {
 		return err
 	}
-
 	// Assert arrays are same length.
 	if len(votesToCast) != len(smr.Replies) {
 		return fmt.Errorf("assert len(votesToCast)) != len(Replies) -- %v "+
@@ -972,7 +967,7 @@ func (p *piv) _vote(token, voteID string) error {
 
 	// Vote everything at once on the supplied proposal.
 	cv := tkv1.CastBallot{Votes: votesToCast}
-	p.ballotResults = make([]tkv1.CastVoteReply, 0, len(votesToCast))
+	//p.ballotResults = make([]tkv1.CastVoteReply, 0, len(votesToCast))
 	responseBody, err := p.makeRequest(http.MethodPost, tkv1.APIRoute,
 		tkv1.RouteCastBallot, &cv)
 	if err != nil {
@@ -985,7 +980,7 @@ func (p *piv) _vote(token, voteID string) error {
 		return fmt.Errorf("Could not unmarshal CastVoteReply: %v",
 			err)
 	}
-	p.ballotResults = br.Receipts
+	p.ballotResults = append(p.ballotResults, br.Receipts...)
 
 	return nil
 }
@@ -1026,12 +1021,101 @@ func (p *piv) setupVoteDuration(timeLeftInVote time.Duration) error {
 	return nil
 }
 
-func (p *piv) vote(args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("vote: not enough arguments %v", args)
+func (p *piv) validateArguments(args []string) (qtyYes, qtyNo int, err error) {
+	if args[1] != "yes" {
+		return 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+	}
+	if args[3] != "no" {
+		return 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+	}
+	rateYes, _ := strconv.ParseFloat(args[2], 64)
+	rateNo, _ := strconv.ParseFloat(args[4], 64)
+	if rateYes < 0 || rateNo < 0 {
+		return 0, 0, fmt.Errorf("rate must be > 0 and < 1")
+	}
+	if rateYes+rateNo > 1 {
+		return 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
+	}
+	// calculate number vote
+	total, err := p.getTotalVotes(args[0])
+	roughYes := float64(total) * rateYes
+	roughNo := float64(total) * rateNo
+
+	return int(math.Round(roughYes)), int(math.Round(roughNo)), nil
+}
+
+func (p *piv) getTotalVotes(token string) (int, error) {
+	passphrase, err := p.walletPassphrase()
+	if err != nil {
+		return 0, err
+	}
+	// This assumes the account is an HD account.
+	_, err = p.wallet.GetAccountExtendedPrivKey(p.ctx,
+		&pb.GetAccountExtendedPrivKeyRequest{
+			AccountNumber: 0, // TODO: make a config flag
+			Passphrase:    passphrase,
+		})
+	if err != nil {
+		return 0, err
 	}
 
-	err := p._vote(args[0], args[1])
+	// Get server public key by calling version request.
+	v, err := p.getVersion()
+	if err != nil {
+		return 0, err
+	}
+
+	// Get vote details.
+	dr, err := p.voteDetails(token, v.PubKey)
+	if err != nil {
+		return 0, err
+	}
+
+	// Find eligble tickets
+	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
+	if err != nil {
+		return 0, fmt.Errorf("ticket pool corrupt: %v %v",
+			token, err)
+	}
+	ctres, err := p.wallet.CommittedTickets(p.ctx,
+		&pb.CommittedTicketsRequest{
+			Tickets: tix,
+		})
+	if err != nil {
+		return 0, fmt.Errorf("ticket pool verification: %v %v",
+			token, err)
+	}
+	if len(ctres.TicketAddresses) == 0 {
+		return 0, fmt.Errorf("no eligible tickets found")
+	}
+
+	// voteResults a list of the votes that have already been cast. We use these
+	// to filter out the tickets that have already voted.
+	rr, err := p.voteResults(token, v.PubKey)
+	if err != nil {
+		return 0, err
+	}
+
+	// Filter out tickets that have already voted or are otherwise ineligible
+	// for the wallet to sign.  Note that tickets that have already voted, but
+	// have an invalid signature are included so they may be resubmitted.
+	eligible, err := p.eligibleVotes(rr, ctres)
+	if err != nil {
+		return 0, err
+	}
+	return len(eligible), err
+}
+
+func (p *piv) vote(args []string) error {
+	if len(args) != 5 {
+		return fmt.Errorf("vote: not enough arguments %v", args)
+	}
+	qtyYes, qtyNo, err := p.validateArguments(args)
+	if err != nil {
+		return err
+	}
+	err = p._vote(args[0], args[1], qtyYes)
+	err = p._vote(args[0], args[3], qtyNo)
 	// we return err after printing details
 
 	// Verify vote replies. Already voted errors are not
