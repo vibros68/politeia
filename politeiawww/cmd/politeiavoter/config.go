@@ -89,6 +89,7 @@ type config struct {
 	Trickle          bool   `long:"trickle" description:"Enable vote trickling, requires --proxy."`
 	Bunches          uint   `long:"bunches" description:"Number of parallel bunches that start at random times."`
 	SkipVerify       bool   `long:"skipverify" description:"Skip verifying the server's certifcate chain and host name."`
+	Resume           bool   `long:"resume" description:"Track the old votes to the current rate"`
 
 	// HoursPrior designates the hours to subtract from the end of the
 	// voting period and is set to a default of 12 hours. These extra

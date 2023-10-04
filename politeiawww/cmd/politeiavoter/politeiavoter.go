@@ -395,7 +395,7 @@ func firstContact(shutdownCtx context.Context, cfg *config) (*piv, error) {
 // is valid.  In the case it is invalid, and the wallet can sign it, the ticket
 // is included so it may be resubmitted.  This could be caused by bad data on
 // the server or if the server is lying to the client.
-func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsResponse) ([]*pb.CommittedTicketsResponse_TicketAddress, error) {
+func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsResponse) (votedYes, votedNo, eligible []*pb.CommittedTicketsResponse_TicketAddress, err error) {
 	// Put cast votes into a map to filter in linear time
 	castVotes := make(map[string]tkv1.CastVoteDetails)
 	for _, v := range rr.Votes {
@@ -406,12 +406,12 @@ func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsRes
 	// voted but the signature is invalid, resubmit the vote. This
 	// could be caused by bad data on the server or if the server is
 	// lying to the client.
-	eligible := make([]*pb.CommittedTicketsResponse_TicketAddress, 0,
+	eligible = make([]*pb.CommittedTicketsResponse_TicketAddress, 0,
 		len(ctres.TicketAddresses))
 	for _, t := range ctres.TicketAddresses {
 		h, err := chainhash.NewHash(t.Ticket)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 
 		// Filter out tickets tracked by imported xpub accounts.
@@ -445,13 +445,20 @@ func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsRes
 			continue
 		}
 
-		_, ok := castVotes[h.String()]
+		detail, ok := castVotes[h.String()]
 		if !ok {
 			eligible = append(eligible, t)
+		} else {
+			if detail.VoteBit == "2" {
+				votedYes = append(votedYes, t)
+			} else {
+				votedNo = append(votedNo, t)
+			}
 		}
+
 	}
 
-	return eligible, nil
+	return votedYes, votedNo, eligible, nil
 }
 
 func (p *piv) _inventory(i tkv1.Inventory) (*tkv1.InventoryReply, error) {
@@ -695,7 +702,7 @@ func (p *piv) inventory() error {
 		// ineligible for the wallet to sign.  Note that tickets that have
 		// already voted, but have an invalid signature are included so they
 		// may be resubmitted.
-		eligible, err := p.eligibleVotes(rr, ctres)
+		votedY, votedN, eligible, err := p.eligibleVotes(rr, ctres)
 		if err != nil {
 			fmt.Printf("Eligible vote filtering error: %v %v\n",
 				dr.Vote.Params, err)
@@ -710,6 +717,8 @@ func (p *piv) inventory() error {
 		fmt.Printf("  Mask            : %v\n", dr.Vote.Params.Mask)
 		fmt.Printf("  Eligible tickets: %v\n", len(ctres.TicketAddresses))
 		fmt.Printf("  Eligible votes  : %v\n", len(eligible))
+		fmt.Printf("  Voted yes  : %v\n", len(votedY))
+		fmt.Printf("  Voted no   : %v\n", len(votedN))
 		fmt.Printf("  Vote Option:\n")
 		fmt.Printf("    politeiavoter vote %v yes 0.67 no 0.34\n", dr.Vote.Params.Token)
 	}
@@ -788,7 +797,50 @@ func (p *piv) dumpTogo() {
 	panic("dumpTogo")
 }
 
-func (p *piv) _vote(token, voteID string, quantity int) error {
+func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse, qtyY, qtyN int, voteBitY, voteBitN string) ([]tkv1.CastVote, error) {
+	var voteY, voteN int
+	var votesToCast []tkv1.CastVote
+	for _, v := range ctres.TicketAddresses {
+		if voteY == qtyY && voteN == qtyN {
+			break
+		}
+		h, err := chainhash.NewHash(v.Ticket)
+		if err != nil {
+			return nil, err
+		}
+		var voteBit string
+		if voteY < qtyY && voteN < qtyN {
+			choice, err := randomInt64(0, 2)
+			if err != nil {
+				return nil, err
+			}
+			if choice == 1 {
+				voteY++
+				voteBit = voteBitY
+			} else {
+				voteN++
+				voteBit = voteBitN
+			}
+		} else {
+			if voteY < qtyY {
+				voteY++
+				voteBit = voteBitY
+			} else {
+				voteN++
+				voteBit = voteBitN
+			}
+		}
+		votesToCast = append(votesToCast, tkv1.CastVote{
+			Token:   token,
+			Ticket:  h.String(),
+			VoteBit: voteBit,
+			// Signature set from reply below.
+		})
+	}
+	return votesToCast, nil
+}
+
+func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
 		return err
@@ -835,20 +887,16 @@ func (p *piv) _vote(token, voteID string, quantity int) error {
 		return err
 	}
 
-	// Validate voteId
 	var (
-		voteBit string
-		found   bool
+		voteBitY, voteBitN string
 	)
 	for _, vv := range dr.Vote.Params.Options {
-		if vv.ID == voteID {
-			found = true
-			voteBit = strconv.FormatUint(vv.Bit, 16)
-			break
+		if vv.ID == "yes" {
+			voteBitY = strconv.FormatUint(vv.Bit, 16)
 		}
-	}
-	if !found {
-		return fmt.Errorf("vote id not found: %v", voteID)
+		if vv.ID == "no" {
+			voteBitN = strconv.FormatUint(vv.Bit, 16)
+		}
 	}
 
 	// Find eligble tickets
@@ -879,7 +927,7 @@ func (p *piv) _vote(token, voteID string, quantity int) error {
 	// Filter out tickets that have already voted or are otherwise ineligible
 	// for the wallet to sign.  Note that tickets that have already voted, but
 	// have an invalid signature are included so they may be resubmitted.
-	eligible, err := p.eligibleVotes(rr, ctres)
+	_, _, eligible, err := p.eligibleVotes(rr, ctres)
 	if err != nil {
 		return err
 	}
@@ -898,23 +946,10 @@ func (p *piv) _vote(token, voteID string, quantity int) error {
 	ctres.TicketAddresses = eligible
 
 	// Create unsigned votes to cast.
-	votesToCast := make([]tkv1.CastVote, 0, len(ctres.TicketAddresses))
-	for _, v := range ctres.TicketAddresses {
-		h, err := chainhash.NewHash(v.Ticket)
-		if err != nil {
-			return err
-		}
-		votesToCast = append(votesToCast, tkv1.CastVote{
-			Token:   token,
-			Ticket:  h.String(),
-			VoteBit: voteBit,
-			// Signature set from reply below.
-		})
-		if len(votesToCast) == quantity {
-			break
-		}
+	votesToCast, err := p.buildVotesToCast(token, ctres, qtyY, qtyN, voteBitY, voteBitN)
+	if err != nil {
+		return err
 	}
-
 	// Sign all messages that comprise the votes.
 	sm := &pb.SignMessagesRequest{
 		Passphrase: passphrase,
@@ -1037,17 +1072,31 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo int, err error) {
 		return 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
 	}
 	// calculate number vote
-	total, err := p.getTotalVotes(args[0])
-	roughYes := float64(total) * rateYes
-	roughNo := float64(total) * rateNo
-
-	return int(math.Round(roughYes)), int(math.Round(roughNo)), nil
+	votedYes, votedNo, eligible, total, err := p.getTotalVotes(args[0])
+	roughYes := float64(len(eligible)) * rateYes
+	roughNo := float64(len(eligible)) * rateNo
+	var voteYes = int(math.Round(roughYes))
+	var voteNo = int(math.Round(roughNo))
+	if p.cfg.Resume {
+		roughYes = float64(len(total)) * rateYes
+		roughNo = float64(len(total)) * rateNo
+		voteYes = int(math.Round(roughYes))
+		voteNo = int(math.Round(roughNo))
+		if voteYes < len(votedYes) {
+			return 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, len(votedYes))
+		}
+		if voteNo < len(votedNo) {
+			return 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, len(votedNo))
+		}
+		return voteYes - len(votedYes), voteNo - len(votedNo), nil
+	}
+	return voteYes, voteNo, fmt.Errorf("sda")
 }
 
-func (p *piv) getTotalVotes(token string) (int, error) {
+func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []*pb.CommittedTicketsResponse_TicketAddress, err error) {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, nil, err
 	}
 	// This assumes the account is an HD account.
 	_, err = p.wallet.GetAccountExtendedPrivKey(p.ctx,
@@ -1056,25 +1105,25 @@ func (p *piv) getTotalVotes(token string) (int, error) {
 			Passphrase:    passphrase,
 		})
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Get server public key by calling version request.
 	v, err := p.getVersion()
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Get vote details.
 	dr, err := p.voteDetails(token, v.PubKey)
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Find eligble tickets
 	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
 	if err != nil {
-		return 0, fmt.Errorf("ticket pool corrupt: %v %v",
+		return nil, nil, nil, nil, fmt.Errorf("ticket pool corrupt: %v %v",
 			token, err)
 	}
 	ctres, err := p.wallet.CommittedTickets(p.ctx,
@@ -1082,28 +1131,23 @@ func (p *piv) getTotalVotes(token string) (int, error) {
 			Tickets: tix,
 		})
 	if err != nil {
-		return 0, fmt.Errorf("ticket pool verification: %v %v",
+		return nil, nil, nil, nil, fmt.Errorf("ticket pool verification: %v %v",
 			token, err)
 	}
 	if len(ctres.TicketAddresses) == 0 {
-		return 0, fmt.Errorf("no eligible tickets found")
+		return nil, nil, nil, nil, fmt.Errorf("no eligible tickets found")
 	}
 
 	// voteResults a list of the votes that have already been cast. We use these
 	// to filter out the tickets that have already voted.
 	rr, err := p.voteResults(token, v.PubKey)
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, nil, err
 	}
-
-	// Filter out tickets that have already voted or are otherwise ineligible
-	// for the wallet to sign.  Note that tickets that have already voted, but
-	// have an invalid signature are included so they may be resubmitted.
-	eligible, err := p.eligibleVotes(rr, ctres)
-	if err != nil {
-		return 0, err
-	}
-	return len(eligible), err
+	votedYes, votedNo, eligible, err = p.eligibleVotes(rr, ctres)
+	total = append(eligible, votedYes...)
+	total = append(total, votedNo...)
+	return
 }
 
 func (p *piv) vote(args []string) error {
@@ -1114,8 +1158,10 @@ func (p *piv) vote(args []string) error {
 	if err != nil {
 		return err
 	}
-	err = p._vote(args[0], args[1], qtyYes)
-	err = p._vote(args[0], args[3], qtyNo)
+	if qtyYes == 0 && qtyNo == 0 {
+		return fmt.Errorf("vote yes and no = 0")
+	}
+	err = p._vote(args[0], qtyYes, qtyNo)
 	// we return err after printing details
 
 	// Verify vote replies. Already voted errors are not
