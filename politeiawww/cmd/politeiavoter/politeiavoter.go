@@ -1090,7 +1090,7 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo int, err error) {
 		}
 		return voteYes - len(votedYes), voteNo - len(votedNo), nil
 	}
-	return voteYes, voteNo, fmt.Errorf("sda")
+	return voteYes, voteNo, nil
 }
 
 func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []*pb.CommittedTicketsResponse_TicketAddress, err error) {
