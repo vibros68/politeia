@@ -48,47 +48,85 @@ type voteAlarm struct {
 	At   time.Time     `json:"at"`   // When initial vote will be submitted
 }
 
-func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote) ([]*voteAlarm, error) {
+func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN string) ([]*voteAlarm, error) {
 	bunches := int(p.cfg.Bunches)
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
 	fmt.Printf("Total number of bunches: %v\n", bunches)
+	fmt.Printf("Start bunches time     : %v\n", p.cfg.startTime)
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
-
+	now := time.Now()
 	// Initialize bunches
-	tStart := make([]time.Time, bunches)
-	tEnd := make([]time.Time, bunches)
+	var workedBunches, generatedBunches []*bunche
 	for i := 0; i < bunches; i++ {
 		var err error
-		tStart[i], tEnd[i], err = randomTime(voteDuration)
+		tStart, tEnd, err := randomTime(p.cfg.startTime, voteDuration)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("bunchID: %v start %v end %v duration %v\n",
-			i, tStart[i], tEnd[i], tEnd[i].Sub(tStart[i]))
+
+		var b = &bunche{
+			id:    i,
+			start: tStart,
+			end:   tEnd,
+		}
+		generatedBunches = append(generatedBunches, b)
+		if tEnd.Unix() > now.Unix() {
+			workedBunches = append(workedBunches, b)
+		}
+	}
+	if len(workedBunches) == 0 {
+		return nil, fmt.Errorf("there are no valid bunches")
 	}
 
 	va := make([]*voteAlarm, len(votesToCast))
 	for k := range votesToCast {
-		x := k % bunches
-		start := new(big.Int).SetInt64(tStart[x].Unix())
-		end := new(big.Int).SetInt64(tEnd[x].Unix())
-		// Generate random time to fire off vote
-		r, err := rand.Int(rand.Reader, new(big.Int).Sub(end, start))
+		x := k % len(workedBunches)
+		b := workedBunches[x]
+		start := new(big.Int).SetInt64(b.start.Unix())
+		end := new(big.Int).SetInt64(b.end.Unix())
+		t, err := randomFutureTime(start, end)
 		if err != nil {
 			return nil, err
 		}
-		//fmt.Printf("r        : %v\n", r)
-		t := time.Unix(tStart[x].Unix()+r.Int64(), 0)
-		//fmt.Printf("at time  : %v\n", t)
-
 		va[k] = &voteAlarm{
 			Vote: votesToCast[k],
 			At:   t,
 		}
+		if votesToCast[k].VoteBit == voteBitY {
+			b.voteY++
+		} else {
+			b.voteN++
+		}
+	}
+	for i, b := range generatedBunches {
+		fmt.Printf("bunchID: %v start %v end %v duration %v vote (yes %d/ no %d)\n",
+			i, b.start, b.end, b.end.Sub(b.start), b.voteY, b.voteN)
 	}
 
 	return va, nil
+}
+
+type bunche struct {
+	id    int
+	start time.Time
+	end   time.Time
+	voteY int
+	voteN int
+}
+
+func randomFutureTime(start, end *big.Int) (time.Time, error) {
+	now := new(big.Int).SetInt64(time.Now().Unix())
+	for {
+		r, err := rand.Int(rand.Reader, new(big.Int).Sub(end, start))
+		if err != nil {
+			return time.Time{}, err
+		}
+		diff := r.Sub(r, now)
+		if diff.Uint64() > 0 {
+			return time.Unix(start.Int64()+r.Int64(), 0), nil
+		}
+	}
 }
 
 // randomDuration returns a randomly selected Duration between the provided
@@ -114,7 +152,7 @@ func randomDuration(min, max byte) time.Duration {
 	return time.Duration(wait[0]) * time.Second
 }
 
-func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteAlarm) error {
+func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteAlarm, voteBitY, voteBitN string) error {
 	voteID++ // make human readable
 
 	// Wait
@@ -122,6 +160,10 @@ func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteA
 	if err != nil {
 		return fmt.Errorf("%v bunch %v vote %v failed: %v",
 			time.Now(), bunchID, voteID, err)
+	}
+	var voteSide = "yes"
+	if va.Vote.VoteBit == voteBitN {
+		voteSide = "no"
 	}
 
 	// Vote
@@ -133,13 +175,13 @@ func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteA
 			rmsg = fmt.Sprintf("retry %v (%v) ", retry, d)
 			err = WaitFor(ectx, d)
 			if err != nil {
-				return fmt.Errorf("%v bunch %v vote %v failed: %v",
-					time.Now(), bunchID, voteID, err)
+				return fmt.Errorf("%v bunch %v vote %v(%s) failed: %v",
+					time.Now(), bunchID, voteID, voteSide, err)
 			}
 		}
 
-		fmt.Printf("%v voting bunch %v vote %v %v%v\n",
-			time.Now(), bunchID, voteID, rmsg, va.Vote.Ticket)
+		fmt.Printf("%v voting bunch %v vote %v(%s) %v%v\n",
+			time.Now(), bunchID, voteID, voteSide, rmsg, va.Vote.Ticket)
 
 		// Send off vote
 		b := tkv1.CastBallot{Votes: []tkv1.CastVote{va.Vote}}
@@ -238,12 +280,16 @@ func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteA
 		// Vote completed
 		p.Lock()
 		p.ballotResults = append(p.ballotResults, *vr)
-
+		if va.Vote.VoteBit == voteBitY {
+			p.votedYes++
+		} else {
+			p.votedNo++
+		}
 		// This is required to be in the lock to prevent a
 		// ballotResults race
-		fmt.Printf("%v finished bunch %v vote %v -- "+
+		fmt.Printf("%v finished bunch %v vote %v(%s) -- "+
 			"total progress %v/%v\n", time.Now(), bunchID,
-			voteID, len(p.ballotResults), cap(p.ballotResults))
+			voteID, voteSide, len(p.ballotResults), cap(p.ballotResults))
 		p.Unlock()
 
 		return nil
@@ -262,8 +308,7 @@ func randomInt64(min, max int64) (int64, error) {
 	return new(big.Int).Add(mi, r).Int64(), nil
 }
 
-func randomTime(d time.Duration) (time.Time, time.Time, error) {
-	now := time.Now()
+func randomTime(headTime time.Time, d time.Duration) (time.Time, time.Time, error) {
 	halfDuration := int64(d / 2)
 	st, err := randomInt64(0, halfDuration*90/100) // up to 90% of half
 	if err != nil {
@@ -273,14 +318,14 @@ func randomTime(d time.Duration) (time.Time, time.Time, error) {
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	startTime := now.Add(time.Duration(st)).Unix()
-	endTime := now.Add(time.Duration(et)).Unix()
+	startTime := headTime.Add(time.Duration(st)).Unix()
+	endTime := headTime.Add(time.Duration(et)).Unix()
 	return time.Unix(startTime, 0), time.Unix(endTime, 0), nil
 }
 
-func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote) error {
+func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote, voted int, voteBitY, voteBitN string) error {
 	// Generate work queue
-	votes, err := p.generateVoteAlarm(votesToCast)
+	votes, err := p.generateVoteAlarm(votesToCast, voteBitY, voteBitN)
 	if err != nil {
 		return err
 	}
@@ -310,7 +355,7 @@ func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote) error {
 			of = mod
 		}
 		eg.Go(func() error {
-			return p.voteTicket(ectx, bunchID, voterID, of, v)
+			return p.voteTicket(ectx, bunchID, voterID, of, v, voteBitY, voteBitN)
 		})
 	}
 	err = eg.Wait()

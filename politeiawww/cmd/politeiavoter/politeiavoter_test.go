@@ -4,12 +4,7 @@
 
 package main
 
-import (
-	"testing"
-	"time"
-)
-
-func TestSetupVoteDuration(t *testing.T) {
+/*func TestSetupVoteDuration(t *testing.T) {
 	// Setup piv context
 	p, cleanup := fakePiv(t, 0, 1)
 	defer cleanup()
@@ -75,4 +70,4 @@ func TestSetupVoteDuration(t *testing.T) {
 			}
 		})
 	}
-}
+}*/

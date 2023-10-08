@@ -98,6 +98,8 @@ func (p *piv) walletPassphrase() ([]byte, error) {
 type piv struct {
 	sync.RWMutex                       // retryQ lock
 	ballotResults []tkv1.CastVoteReply // results of voting
+	votedYes      int
+	votedNo       int
 
 	run time.Time // when this run started
 
@@ -584,6 +586,29 @@ func (p *piv) votePolicy() (*tkv1.PolicyReply, error) {
 	return &pr, nil
 }
 
+func (p *piv) names(tokens ...string) (names map[string]string, err error) {
+	version, err := p.getVersion()
+	if err != nil {
+		return nil, err
+	}
+	serverPubKey := version.PubKey
+	names = make(map[string]string)
+	reply, err := p.records(tokens, serverPubKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get proposal metadata and store proposal name in map.
+	for token, record := range reply.Records {
+		md, err := client.ProposalMetadataDecode(record.Files)
+		if err != nil {
+			return nil, err
+		}
+		names[token] = md.Name
+	}
+	return names, err
+}
+
 func (p *piv) inventory() error {
 	// Get server public key to verify replies.
 	version, err := p.getVersion()
@@ -840,7 +865,7 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 	return votesToCast, nil
 }
 
-func (p *piv) _vote(token string, qtyY, qtyN int) error {
+func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
 		return err
@@ -873,7 +898,6 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	if vs.Status != tkv1.VoteStatusStarted {
 		return fmt.Errorf("proposal vote is not active: %v", vs.Status)
 	}
-	bestBlock := vs.BestBlock
 
 	// Get server public key by calling version request.
 	v, err := p.getVersion()
@@ -986,18 +1010,13 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	// Trickle in the votes if specified
 	if p.cfg.Trickle {
 		// Setup the trickler vote duration
-		var (
-			blocksLeft     = int64(vs.EndBlockHeight) - int64(bestBlock)
-			blockTime      = activeNetParams.TargetTimePerBlock
-			timeLeftInVote = time.Duration(blocksLeft) * blockTime
-		)
-		err = p.setupVoteDuration(timeLeftInVote)
+		err = p.setupVoteDuration(vs)
 		if err != nil {
 			return err
 		}
 
 		// Trickle votes
-		return p.alarmTrickler(token, votesToCast)
+		return p.alarmTrickler(token, votesToCast, votedY+votedN, voteBitY, voteBitN)
 	}
 
 	// Vote everything at once on the supplied proposal.
@@ -1016,7 +1035,8 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 			err)
 	}
 	p.ballotResults = append(p.ballotResults, br.Receipts...)
-
+	p.votedYes = votedY
+	p.votedNo = votedN
 	return nil
 }
 
@@ -1024,7 +1044,18 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 // votes. The user can either set a duration manually using the --voteduration
 // setting or this function will calculate a duration. The calculated duration
 // is the remaining time left in the vote minus the --hoursprior setting.
-func (p *piv) setupVoteDuration(timeLeftInVote time.Duration) error {
+func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
+	var (
+		blocksLeft     = int64(vs.EndBlockHeight) - int64(vs.BestBlock)
+		blockTime      = activeNetParams.TargetTimePerBlock
+		timeLeftInVote = time.Duration(blocksLeft) * blockTime
+		timePassInVote = time.Duration(int64(vs.EndBlockHeight)-int64(vs.BestBlock)) * blockTime
+	)
+	p.cfg.startTime = time.Now()
+	if p.cfg.Resume {
+		p.cfg.startTime = time.Now().Add(-timePassInVote)
+	}
+
 	switch {
 	case p.cfg.voteDuration.Seconds() > 0:
 		// A vote duration was provided
@@ -1038,6 +1069,9 @@ func (p *piv) setupVoteDuration(timeLeftInVote time.Duration) error {
 		// A vote duration was not provided. The vote duration is set to
 		// the remaining time in the vote minus the hours prior setting.
 		p.cfg.voteDuration = timeLeftInVote - p.cfg.hoursPrior
+		if p.cfg.Resume {
+			p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
+		}
 
 		// Force the user to manually set the vote duration when the
 		// calculated duration is under 24h.
@@ -1056,41 +1090,34 @@ func (p *piv) setupVoteDuration(timeLeftInVote time.Duration) error {
 	return nil
 }
 
-func (p *piv) validateArguments(args []string) (qtyYes, qtyNo int, err error) {
+func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, votedY, votedN int, err error) {
 	if args[1] != "yes" {
-		return 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 	}
 	if args[3] != "no" {
-		return 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 	}
 	rateYes, _ := strconv.ParseFloat(args[2], 64)
 	rateNo, _ := strconv.ParseFloat(args[4], 64)
 	if rateYes < 0 || rateNo < 0 {
-		return 0, 0, fmt.Errorf("rate must be > 0 and < 1")
+		return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
 	}
 	if rateYes+rateNo > 1 {
-		return 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
+		return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
 	}
 	// calculate number vote
-	votedYes, votedNo, eligible, total, err := p.getTotalVotes(args[0])
-	roughYes := float64(len(eligible)) * rateYes
-	roughNo := float64(len(eligible)) * rateNo
-	var voteYes = int(math.Round(roughYes))
-	var voteNo = int(math.Round(roughNo))
-	if p.cfg.Resume {
-		roughYes = float64(len(total)) * rateYes
-		roughNo = float64(len(total)) * rateNo
-		voteYes = int(math.Round(roughYes))
-		voteNo = int(math.Round(roughNo))
-		if voteYes < len(votedYes) {
-			return 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, len(votedYes))
-		}
-		if voteNo < len(votedNo) {
-			return 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, len(votedNo))
-		}
-		return voteYes - len(votedYes), voteNo - len(votedNo), nil
+	votedYes, votedNo, _, total, err := p.getTotalVotes(args[0])
+	roughYes := float64(len(total)) * rateYes
+	roughNo := float64(len(total)) * rateNo
+	voteYes := int(math.Round(roughYes))
+	voteNo := int(math.Round(roughNo))
+	if voteYes < len(votedYes) {
+		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, len(votedYes))
 	}
-	return voteYes, voteNo, nil
+	if voteNo < len(votedNo) {
+		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, len(votedNo))
+	}
+	return voteYes - len(votedYes), voteNo - len(votedNo), len(votedYes), len(votedNo), nil
 }
 
 func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []*pb.CommittedTicketsResponse_TicketAddress, err error) {
@@ -1154,14 +1181,21 @@ func (p *piv) vote(args []string) error {
 	if len(args) != 5 {
 		return fmt.Errorf("vote: not enough arguments %v", args)
 	}
-	qtyYes, qtyNo, err := p.validateArguments(args)
+	qtyYes, qtyNo, votedYes, votedNo, err := p.validateArguments(args)
 	if err != nil {
 		return err
 	}
 	if qtyYes == 0 && qtyNo == 0 {
 		return fmt.Errorf("vote yes and no = 0")
 	}
-	err = p._vote(args[0], qtyYes, qtyNo)
+	var token = args[0]
+	names, err := p.names(token)
+	if err != nil {
+		return err
+	} else {
+		fmt.Printf("Voting on      : %s\n", names[token])
+	}
+	err = p._vote(token, qtyYes, qtyNo, votedYes, votedNo)
 	// we return err after printing details
 
 	// Verify vote replies. Already voted errors are not
@@ -1189,8 +1223,8 @@ func (p *piv) vote(args []string) error {
 	log.Debugf("%v already voted errors found; these are "+
 		"counted as being successful", alreadyVoted)
 
-	fmt.Printf("Votes succeeded: %v\n", len(p.ballotResults)-
-		len(failedReceipts))
+	fmt.Printf("Votes succeeded: %v(yes-%d/no-%d)\n", len(p.ballotResults)-
+		len(failedReceipts), p.votedYes, p.votedNo)
 	fmt.Printf("Votes failed   : %v\n", len(failedReceipts))
 	notCast := cap(p.ballotResults) - len(p.ballotResults)
 	if notCast > 0 {

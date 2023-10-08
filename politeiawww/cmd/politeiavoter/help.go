@@ -15,13 +15,16 @@ const inventoryHelpMsg = `inventory
 
 Retrieve all proposals that are being voted on.`
 
-const voteHelpMsg = `vote "token" "voteid"
+const voteHelpMsg = `vote [tokenId] yes [yesRate] no [noRate]
 
 Vote on a proposal.
 
 Arguments:
-1. token   (string, required)  Proposal censorship token
-2. voteid  (string, required)  Vote option ID (e.g. yes)`
+1. tokenId   (string, required)  Proposal censorship token id
+2. yes (string, required)  Vote option ID yes
+3. yesRate (float, required) 0 <= yesRate <= 1
+4. no (string, required)  Vote option ID yes
+5. noRate (float, required) 0 <= noRate <= 1`
 
 const tallyHelpMsg = `tally "token"
 

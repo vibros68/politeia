@@ -69,7 +69,7 @@ func TestTrickleWorkers(t *testing.T) {
 	defer cleanup()
 
 	nrVotes := uint(20)
-	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes))
+	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestUnrecoverableTrickleWorkers(t *testing.T) {
 
 	c.cfg.testingMode = testFailUnrecoverable
 
-	err := c.alarmTrickler("token", fakeVotesToCast(1))
+	err := c.alarmTrickler("token", fakeVotesToCast(1), 0)
 	if err == nil {
 		t.Fatal("expected unrecoverable error")
 	}
@@ -97,7 +97,7 @@ func TestManyTrickleWorkers(t *testing.T) {
 	defer cleanup()
 
 	nrVotes := uint(20000)
-	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes))
+	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

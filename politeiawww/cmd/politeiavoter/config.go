@@ -104,6 +104,7 @@ type config struct {
 	dial          func(string, string) (net.Conn, error)
 	voteDuration  time.Duration // Parsed VoteDuration
 	hoursPrior    time.Duration // Converted HoursPrior
+	startTime     time.Time
 	blocksPerHour uint64
 
 	// Test only
