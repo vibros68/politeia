@@ -100,6 +100,9 @@ type config struct {
 	ClientCert string `long:"clientcert" description:"Path to TLS certificate for client authentication"`
 	ClientKey  string `long:"clientkey" description:"Path to TLS client authentication key"`
 
+	StartDuration float64 `long:"startduration" description:""`
+	EndDuration   float64 `long:"endduration" description:""`
+
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
 	voteDuration  time.Duration // Parsed VoteDuration
