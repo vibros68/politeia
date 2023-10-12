@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -49,43 +50,19 @@ type voteAlarm struct {
 }
 
 func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN string) ([]*voteAlarm, error) {
-	bunches := int(p.cfg.Bunches)
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
-	fmt.Printf("Total number of bunches: %v\n", bunches)
 	fmt.Printf("Start bunches time     : %v\n", p.cfg.startTime)
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
-	now := time.Now()
-	// Initialize bunches
-	var workedBunches, generatedBunches []*bunche
-	for i := 0; i < bunches; i++ {
-		var err error
-		tStart, tEnd, err := randomTime(p.cfg.startTime, voteDuration)
-		if err != nil {
-			return nil, err
-		}
 
-		var b = &bunche{
-			id:    i,
-			start: tStart,
-			end:   tEnd,
-		}
-		generatedBunches = append(generatedBunches, b)
-		if tEnd.Unix() > now.Unix() {
-			workedBunches = append(workedBunches, b)
-		}
-	}
-	if len(workedBunches) == 0 {
-		return nil, fmt.Errorf("there are no valid bunches")
+	gaussion, err := NewGaussian(math.Sqrt(0.01), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration))
+	if err != nil {
+		return nil, err
 	}
 
 	va := make([]*voteAlarm, len(votesToCast))
 	for k := range votesToCast {
-		x := k % len(workedBunches)
-		b := workedBunches[x]
-		start := new(big.Int).SetInt64(b.start.Unix())
-		end := new(big.Int).SetInt64(b.end.Unix())
-		t, err := randomFutureTime(start, end)
+		t, err := randomFutureTime(gaussion)
 		if err != nil {
 			return nil, err
 		}
@@ -93,38 +70,20 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 			Vote: votesToCast[k],
 			At:   t,
 		}
-		if votesToCast[k].VoteBit == voteBitY {
-			b.voteY++
-		} else {
-			b.voteN++
-		}
-	}
-	for i, b := range generatedBunches {
-		fmt.Printf("bunchID: %v start %v end %v duration %v vote (yes %d/ no %d)\n",
-			i, b.start, b.end, b.end.Sub(b.start), b.voteY, b.voteN)
 	}
 
 	return va, nil
 }
 
-type bunche struct {
-	id    int
-	start time.Time
-	end   time.Time
-	voteY int
-	voteN int
-}
-
-func randomFutureTime(start, end *big.Int) (time.Time, error) {
-	now := new(big.Int).SetInt64(time.Now().Unix())
+func randomFutureTime(g *Gaussian) (time.Time, error) {
+	now := time.Now()
 	for {
-		r, err := rand.Int(rand.Reader, new(big.Int).Sub(end, start))
+		t, err := g.RandomTime()
 		if err != nil {
 			return time.Time{}, err
 		}
-		diff := r.Sub(r, now)
-		if diff.Uint64() > 0 {
-			return time.Unix(start.Int64()+r.Int64(), 0), nil
+		if t.Unix() > now.Unix() {
+			return t, nil
 		}
 	}
 }

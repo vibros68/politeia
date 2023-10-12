@@ -39,8 +39,6 @@ const (
 	clientCertFile = "client.pem"
 	clientKeyFile  = "client-key.pem"
 
-	defaultBunches = uint(1)
-
 	// Testing stuff
 	testFailUnrecoverable = 1
 )
@@ -249,7 +247,6 @@ func loadConfig(appName string) (*config, []string, error) {
 		WalletCert: defaultWalletCert,
 		ClientCert: defaultClientCert,
 		ClientKey:  defaultClientKey,
-		Bunches:    defaultBunches,
 		// HoursPrior default is set below
 	}
 
