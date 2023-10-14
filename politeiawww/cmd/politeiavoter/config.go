@@ -521,17 +521,9 @@ func loadConfig(appName string) (*config, []string, error) {
 	}
 	cfg.hoursPrior = time.Duration(*cfg.HoursPrior) * time.Hour
 
-	// Number of bunches
-	if cfg.Bunches < 1 || cfg.Bunches > 100 {
-		str := "%s: number of bunches must be between 1 and 100"
-		err := fmt.Errorf(str, funcName)
-		return nil, nil, err
-	}
-
 	if !cfg.BypassProxyCheck {
 		if cfg.Trickle && cfg.Proxy == "" {
-			return nil, nil, fmt.Errorf("cannot use --trickle " +
-				"without --proxy")
+			return nil, nil, fmt.Errorf("cannot use --trickle without --proxy")
 		}
 	}
 

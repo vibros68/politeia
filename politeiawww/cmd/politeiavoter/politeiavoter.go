@@ -48,6 +48,7 @@ import (
 
 const (
 	cmdInventory = "inventory"
+	cmdStats     = "stats"
 	cmdVote      = "vote"
 	cmdTally     = "tally"
 	cmdVerify    = "verify"
@@ -116,6 +117,8 @@ type piv struct {
 	creds  credentials.TransportCredentials
 	conn   *grpc.ClientConn
 	wallet pb.WalletServiceClient
+
+	version *v1.VersionReply
 }
 
 func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
@@ -349,6 +352,9 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 
 // getVersion retursn the server side version structure.
 func (p *piv) getVersion() (*v1.VersionReply, error) {
+	if p.version != nil {
+		return p.version, nil
+	}
 	responseBody, err := p.makeRequest(http.MethodGet,
 		v1.PoliteiaWWWAPIRoute, v1.RouteVersion, nil)
 	if err != nil {
@@ -360,7 +366,7 @@ func (p *piv) getVersion() (*v1.VersionReply, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not unmarshal version: %v", err)
 	}
-
+	p.version = &v
 	return &v, nil
 }
 
@@ -746,6 +752,76 @@ func (p *piv) inventory() error {
 		fmt.Printf("  Voted no   : %v\n", len(votedN))
 		fmt.Printf("  Vote Option:\n")
 		fmt.Printf("    politeiavoter vote %v yes 0.67 no 0.34\n", dr.Vote.Params.Token)
+	}
+
+	return nil
+}
+
+func (p *piv) stats() error {
+	votingProposals, err := p.fetchActiveProposals()
+	if err != nil {
+		return err
+	}
+
+	// Get latest block
+	latestBlock, err := p.GetBestBlock()
+	if err != nil {
+		return err
+	}
+
+	for _, vp := range votingProposals {
+
+		endHeight := int32(vp.Vote.EndBlockHeight)
+
+		// Sanity, check if vote has expired
+		if latestBlock > endHeight {
+			fmt.Printf("Vote expired: current %v > end %v %v\n",
+				endHeight, latestBlock, vp.Vote.Params.Token)
+			continue
+		}
+
+		remainBlocks := endHeight - latestBlock
+		estRemainBlockTime := int64(remainBlocks) * int64(activeNetParams.TargetTimePerBlock)
+		timeLeft := time.Now().Unix() + estRemainBlockTime
+
+		fmt.Printf("\nToken: %s \tRemaining blocks: %v\tEst end date/time: %v\n", vp.Vote.Params.Token, remainBlocks, time.Unix(timeLeft, 0).Format(ansicDateFormat))
+
+		// gather totals for proposal
+		sepTicket, err := p.sortTicketsForProposal(vp)
+		if err != nil {
+			return err
+		}
+
+		//checks to make sure we have everything set
+		if (sepTicket.TotalYes + sepTicket.TotalNo) != (sepTicket.TotalVoted) {
+			return fmt.Errorf("total yes+no %v+%v does not equal totalvoted %v", sepTicket.TotalYes, sepTicket.TotalNo, sepTicket.TotalVoted)
+		}
+		if (sepTicket.TotalVoted + sepTicket.TotalRemain) != len(vp.Vote.EligibleTickets) {
+			return fmt.Errorf("total voted+remain %v+%v does not equal total eligible %v", sepTicket.TotalVoted, sepTicket.TotalRemain, len(vp.Vote.EligibleTickets))
+		}
+		if (sepTicket.TotalYes + sepTicket.TotalNo + sepTicket.TotalRemain) != len(vp.Vote.EligibleTickets) {
+			return fmt.Errorf("total voted yes+no+remain %v+%v+%v does not equal total eligible %v", sepTicket.TotalYes, sepTicket.TotalNo, sepTicket.TotalRemain, len(vp.Vote.EligibleTickets))
+		} //more checks to come I am sure
+
+		//get percs for prints
+		totalEligible := len(vp.Vote.EligibleTickets)
+		totalYesPerc := (float64(sepTicket.TotalYes) / float64(totalEligible)) * 100
+		totalVotedPerc := (float64(sepTicket.TotalVoted) / float64(totalEligible)) * 100
+		totalRemainPerc := (float64(sepTicket.TotalRemain) / float64(totalEligible)) * 100
+		notOurYesPerc := (float64(sepTicket.NotOurYes) / float64(totalEligible)) * 100
+		notOurVotedPerc := (float64(sepTicket.NotOurTotalVoted) / float64(totalEligible)) * 100
+		notOurRemainPerc := (float64(sepTicket.NotOurTotalRemain) / float64(totalEligible)) + 100
+		ourYesPerc := (float64(sepTicket.OurYes) / float64(totalEligible)) * 100
+		ourVotedPerc := (float64(sepTicket.OurTotalVoted) / float64(totalEligible)) * 100
+		ourRemainPerc := (float64(sepTicket.OurAvailableToVote) / float64(totalEligible)) * 100
+		//TODO: put in prints based on separateTickets values
+
+		fmt.Printf("Total: Yes %v  No %v (%.0f%% approval)  Voted %v (%.1f%%)  Remain %v (%.1f%%)\n",
+			sepTicket.TotalYes, sepTicket.TotalNo, totalYesPerc, sepTicket.TotalVoted, totalVotedPerc, sepTicket.TotalRemain, totalRemainPerc)
+		fmt.Printf("Public: Yes %v  No %v (%.2f%% approval)  Voted %v (%.2f%%)  Remain %v (%.1f%%)\n",
+			sepTicket.NotOurYes, sepTicket.NotOurNo, notOurYesPerc, sepTicket.NotOurTotalVoted, notOurVotedPerc, sepTicket.NotOurTotalRemain, notOurRemainPerc)
+		fmt.Printf("Me: Yes %v  No %v (%.2f%% approval)  Voted %v (%.2f%%)  Remain %v (%.1f%%)\n",
+			sepTicket.OurYes, sepTicket.OurNo, ourYesPerc, sepTicket.OurTotalVoted, ourVotedPerc, sepTicket.OurAvailableToVote, ourRemainPerc)
 	}
 
 	return nil
@@ -1868,7 +1944,7 @@ func _main() error {
 
 	// Validate command
 	switch action {
-	case cmdInventory, cmdTally, cmdVote:
+	case cmdInventory, cmdTally, cmdVote, cmdStats:
 		// These commands require a connection to a dcrwallet instance. Get
 		// block height to validate GPRC creds.
 		ar, err := c.wallet.Accounts(c.ctx, &pb.AccountsRequest{})
@@ -1892,6 +1968,8 @@ func _main() error {
 	switch action {
 	case cmdInventory:
 		err = c.inventory()
+	case cmdStats:
+		err = c.stats()
 	case cmdVote:
 		err = c.vote(args[1:])
 	case cmdTally:

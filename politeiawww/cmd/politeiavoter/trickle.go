@@ -111,14 +111,14 @@ func randomDuration(min, max byte) time.Duration {
 	return time.Duration(wait[0]) * time.Second
 }
 
-func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteAlarm, voteBitY, voteBitN string) error {
+func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBitY, voteBitN string) error {
 	voteID++ // make human readable
 
 	// Wait
 	err := WaitUntil(ectx, va.At)
 	if err != nil {
-		return fmt.Errorf("%v bunch %v vote %v failed: %v",
-			time.Now(), bunchID, voteID, err)
+		return fmt.Errorf("%v vote %v failed: %v",
+			time.Now(), voteID, err)
 	}
 	var voteSide = "yes"
 	if va.Vote.VoteBit == voteBitN {
@@ -134,13 +134,13 @@ func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteA
 			rmsg = fmt.Sprintf("retry %v (%v) ", retry, d)
 			err = WaitFor(ectx, d)
 			if err != nil {
-				return fmt.Errorf("%v bunch %v vote %v(%s) failed: %v",
-					time.Now(), bunchID, voteID, voteSide, err)
+				return fmt.Errorf("%v vote %v(%s) failed: %v",
+					time.Now(), voteID, voteSide, err)
 			}
 		}
 
-		fmt.Printf("%v voting bunch %v vote %v(%s) %v%v\n",
-			time.Now(), bunchID, voteID, voteSide, rmsg, va.Vote.Ticket)
+		fmt.Printf("%v voting vote %v(%s) %v%v\n",
+			time.Now(), voteID, voteSide, rmsg, va.Vote.Ticket)
 
 		// Send off vote
 		b := tkv1.CastBallot{Votes: []tkv1.CastVote{va.Vote}}
@@ -246,9 +246,8 @@ func (p *piv) voteTicket(ectx context.Context, bunchID, voteID, of int, va voteA
 		}
 		// This is required to be in the lock to prevent a
 		// ballotResults race
-		fmt.Printf("%v finished bunch %v vote %v(%s) -- "+
-			"total progress %v/%v\n", time.Now(), bunchID,
-			voteID, voteSide, len(p.ballotResults), cap(p.ballotResults))
+		fmt.Printf("%v finished vote %v(%s) -- total progress %v/%v\n",
+			time.Now(), voteID, voteSide, len(p.ballotResults), cap(p.ballotResults))
 		p.Unlock()
 
 		return nil
@@ -301,20 +300,15 @@ func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote, voted int
 	// Launch voting go routines
 	eg, ectx := errgroup.WithContext(p.ctx)
 	p.ballotResults = make([]tkv1.CastVoteReply, 0, len(votesToCast))
-	div := len(votes) / int(p.cfg.Bunches)
-	mod := len(votes) % int(p.cfg.Bunches)
+
 	for k := range votes {
 		voterID := k
-		bunchID := voterID % int(p.cfg.Bunches)
 		v := *votes[k]
 
 		// Calculate of
-		of := div
-		if mod != 0 && bunchID == int(p.cfg.Bunches)-1 {
-			of = mod
-		}
+
 		eg.Go(func() error {
-			return p.voteTicket(ectx, bunchID, voterID, of, v, voteBitY, voteBitN)
+			return p.voteTicket(ectx, voterID, v, voteBitY, voteBitN)
 		})
 	}
 	err = eg.Wait()

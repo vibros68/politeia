@@ -33,7 +33,7 @@ func fakeVotesToCast(x uint) []tkv1.CastVote {
 	return votesToCast
 }
 
-func fakePiv(t *testing.T, d time.Duration, x uint) (*piv, func()) {
+func fakePiv(t *testing.T, d time.Duration) (*piv, func()) {
 	// Setup temp home dir
 	homeDir, err := os.MkdirTemp("", "politeiavoter.test")
 	if err != nil {
@@ -57,31 +57,29 @@ func fakePiv(t *testing.T, d time.Duration, x uint) (*piv, func()) {
 			HomeDir:      homeDir,
 			voteDir:      filepath.Join(homeDir, defaultVoteDirname),
 			voteDuration: d,
-			Bunches:      x,
 			testing:      true,
 		},
 	}, cleanup
 }
 
 func TestTrickleWorkers(t *testing.T) {
-	bunches := uint(3)
-	c, cleanup := fakePiv(t, time.Minute, bunches)
+	c, cleanup := fakePiv(t, time.Minute)
 	defer cleanup()
 
 	nrVotes := uint(20)
-	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0)
+	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0, VoteBitYes, VoteBitNo)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestUnrecoverableTrickleWorkers(t *testing.T) {
-	c, cleanup := fakePiv(t, 10*time.Second, 1)
+	c, cleanup := fakePiv(t, 10*time.Second)
 	defer cleanup()
 
 	c.cfg.testingMode = testFailUnrecoverable
 
-	err := c.alarmTrickler("token", fakeVotesToCast(1), 0)
+	err := c.alarmTrickler("token", fakeVotesToCast(1), 0, VoteBitYes, VoteBitNo)
 	if err == nil {
 		t.Fatal("expected unrecoverable error")
 	}
@@ -92,12 +90,11 @@ func TestManyTrickleWorkers(t *testing.T) {
 		t.Skip("TestManyTrickleWorkers: skipping test in short mode.")
 	}
 
-	bunches := uint(10)
-	c, cleanup := fakePiv(t, 2*time.Minute, bunches)
+	c, cleanup := fakePiv(t, 2*time.Minute)
 	defer cleanup()
 
 	nrVotes := uint(20000)
-	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0)
+	err := c.alarmTrickler("token", fakeVotesToCast(nrVotes), 0, VoteBitYes, VoteBitNo)
 	if err != nil {
 		t.Fatal(err)
 	}
