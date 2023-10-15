@@ -1111,8 +1111,8 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 			err)
 	}
 	p.ballotResults = append(p.ballotResults, br.Receipts...)
-	p.votedYes = votedY
-	p.votedNo = votedN
+	p.votedYes = qtyY
+	p.votedNo = qtyN
 	return nil
 }
 
