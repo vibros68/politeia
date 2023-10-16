@@ -457,7 +457,7 @@ func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsRes
 		if !ok {
 			eligible = append(eligible, t)
 		} else {
-			if detail.VoteBit == "2" {
+			if detail.VoteBit == VoteBitYes {
 				votedYes = append(votedYes, t)
 			} else {
 				votedNo = append(votedNo, t)

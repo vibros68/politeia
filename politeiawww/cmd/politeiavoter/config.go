@@ -31,6 +31,7 @@ const (
 	defaultVoteDirname    = "vote"
 	defaultLogFilename    = "politeiavoter.log"
 	defaultWalletHost     = "127.0.0.1"
+	defaultCachePathName  = "cache"
 
 	defaultWalletMainnetPort = "9111"
 	defaultWalletTestnetPort = "19111"
@@ -52,6 +53,7 @@ var (
 	defaultWalletCert = filepath.Join(dcrwalletHomeDir, walletCertFile)
 	defaultClientCert = filepath.Join(defaultHomeDir, clientCertFile)
 	defaultClientKey  = filepath.Join(defaultHomeDir, clientKeyFile)
+	defaultCachePath  = filepath.Join(defaultHomeDir, defaultCachePathName)
 
 	// defaultHoursPrior is the default HoursPrior config value. It's required
 	// to be var and not a const since the HoursPrior setting is a pointer.
@@ -100,6 +102,10 @@ type config struct {
 
 	StartDuration float64 `long:"startduration" description:""`
 	EndDuration   float64 `long:"endduration" description:""`
+
+	// cache
+	CachePath    string  `long:"cachepath" description:"path to the folder store cache data"`
+	CacheTimeout float64 `long:"cachetimeout" description:"the time counted by hours to store cache, default is 1 hour"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
@@ -494,6 +500,12 @@ func loadConfig(appName string) (*config, []string, error) {
 			TorIsolation: true,
 		}
 		cfg.dial = proxy.Dial
+	}
+	if cfg.CachePath == "" {
+		cfg.CachePath = defaultCachePath
+	}
+	if cfg.CacheTimeout <= 0 {
+		cfg.CacheTimeout = 1
 	}
 
 	// VoteDuration can only be set with trickle enable.
