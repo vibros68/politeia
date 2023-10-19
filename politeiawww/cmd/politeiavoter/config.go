@@ -100,12 +100,12 @@ type config struct {
 	ClientCert string `long:"clientcert" description:"Path to TLS certificate for client authentication"`
 	ClientKey  string `long:"clientkey" description:"Path to TLS client authentication key"`
 
-	StartDuration float64 `long:"startduration" description:""`
-	EndDuration   float64 `long:"endduration" description:""`
-
 	// cache
 	CachePath    string  `long:"cachepath" description:"path to the folder store cache data"`
-	CacheTimeout float64 `long:"cachetimeout" description:"the time counted by hours to store cache, default is 1 hour"`
+	CacheTimeout float64 `long:"cachetimeout" description:"the time counted by hours to store cache, default is 7*24 hour"`
+	CacheClear   bool    `long:"cacheclear" description:"clear all cache"`
+
+	GaussianDerivation float64 `long:"gaussianderivation" description:"used to adjust Gaussian distribution, default is 0.04, suggest from 0.01 to 0.1"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
@@ -505,7 +505,10 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.CachePath = defaultCachePath
 	}
 	if cfg.CacheTimeout <= 0 {
-		cfg.CacheTimeout = 1
+		cfg.CacheTimeout = 7 * 24
+	}
+	if cfg.GaussianDerivation == 0 {
+		cfg.GaussianDerivation = 0.04
 	}
 
 	// VoteDuration can only be set with trickle enable.

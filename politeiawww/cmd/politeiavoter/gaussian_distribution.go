@@ -15,6 +15,7 @@ type Gaussian struct {
 	to    time.Time
 	// cache
 	maxFx  float64
+	minFx  float64
 	max    int64
 	middle float64
 }
@@ -35,6 +36,7 @@ func NewGaussian(sigma, mu float64, from, to time.Time) (*Gaussian, error) {
 		return nil, fmt.Errorf("from time must be smaller than to time")
 	}
 	g.maxFx = g.Fx(0)
+	g.minFx = g.Fx(1)
 	g.max = diff
 	g.middle = float64(diff) / 2
 	return &g, nil
@@ -51,7 +53,7 @@ func (g *Gaussian) RandomTime() (time.Time, error) {
 	}
 	x := (float64(res.Int64()) - g.middle) / g.middle
 	y := g.Fx(x)
-	percent := y / g.maxFx
+	percent := (y - g.minFx) / (g.maxFx - g.minFx)
 	unixDiff := percent * g.middle
 	var unix int64
 	if x > 0 {

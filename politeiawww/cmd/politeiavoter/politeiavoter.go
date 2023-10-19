@@ -117,6 +117,7 @@ type piv struct {
 	creds  credentials.TransportCredentials
 	conn   *grpc.ClientConn
 	wallet pb.WalletServiceClient
+	cache  *piCache
 
 	version *v1.VersionReply
 }
@@ -165,7 +166,13 @@ func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
 		return nil, err
 	}
 	wallet := pb.NewWalletServiceClient(conn)
-
+	cache, err := newCache(cfg.CachePath, time.Duration(cfg.CacheTimeout)*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.CacheClear {
+		go cache.Clear()
+	}
 	// return context
 	return &piv{
 		run:    time.Now(),
@@ -179,6 +186,7 @@ func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
 			Jar:       jar,
 		},
 		userAgent: fmt.Sprintf("politeiavoter/%s", cfg.Version),
+		cache:     cache,
 	}, nil
 }
 
@@ -274,6 +282,7 @@ func (p *piv) testMaybeFail(b interface{}) ([]byte, error) {
 func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, error) {
 	var requestBody []byte
 	var queryParams string
+	var startTime = time.Now()
 	if b != nil {
 		if method == http.MethodGet {
 			// GET requests don't have a request body; instead we will populate
@@ -321,7 +330,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	defer func() {
 		r.Body.Close()
 	}()
-
+	fmt.Printf("%s[%s] request took %s. Status code[%d]\n", method, api+route, time.Since(startTime), r.StatusCode)
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 
@@ -489,13 +498,18 @@ func (p *piv) _inventory(i tkv1.Inventory) (*tkv1.InventoryReply, error) {
 // voteDetails sends a ticketvote API Details request, then verifies and
 // returns the reply.
 func (p *piv) voteDetails(token, serverPubKey string) (*tkv1.DetailsReply, error) {
-	d := tkv1.Details{
-		Token: token,
-	}
-	responseBody, err := p.makeRequest(http.MethodPost,
-		tkv1.APIRoute, tkv1.RouteDetails, d)
+	var cacheKey = http.MethodPost + tkv1.APIRoute + tkv1.RouteDetails + token
+	responseBody, err := p.cache.Get(cacheKey)
 	if err != nil {
-		return nil, err
+		d := tkv1.Details{
+			Token: token,
+		}
+		responseBody, err = p.makeRequest(http.MethodPost,
+			tkv1.APIRoute, tkv1.RouteDetails, d)
+		if err != nil {
+			return nil, err
+		}
+		p.cache.Set(cacheKey, responseBody)
 	}
 
 	var dr tkv1.DetailsReply

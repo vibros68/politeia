@@ -55,7 +55,7 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 	fmt.Printf("Start bunches time     : %v\n", p.cfg.startTime)
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
 
-	gaussion, err := NewGaussian(math.Sqrt(0.01), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration))
+	gaussion, err := NewGaussian(math.Sqrt(p.cfg.GaussianDerivation), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration))
 	if err != nil {
 		return nil, err
 	}

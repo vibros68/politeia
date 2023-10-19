@@ -9,6 +9,7 @@ const listCmdMessage = `Available commands:
   vote      Vote on a proposal
   tally     Tally votes on a proposal
   verify    Verify votes on a proposal
+  stats     Print stats information about proposals
   help      Print detailed help message for a command`
 
 const inventoryHelpMsg = `inventory 

@@ -65,3 +65,21 @@ func (p *piCache) Get(key string) ([]byte, error) {
 	})
 	return record.Data, err
 }
+
+func (p *piCache) Clear() error {
+	return p.db.Update(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			err := txn.Delete(k)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
