@@ -86,10 +86,8 @@ type config struct {
 	ProxyUser        string `long:"proxyuser" description:"Username for proxy server"`
 	ProxyPass        string `long:"proxypass" default-mask:"-" description:"Password for proxy server"`
 	VoteDuration     string `long:"voteduration" description:"Duration to cast all votes in hours and minutes e.g. 5h10m (default 0s means autodetect duration)"`
-	Trickle          bool   `long:"trickle" description:"Enable vote trickling, requires --proxy."`
 	Bunches          uint   `long:"bunches" description:"Number of parallel bunches that start at random times."`
 	SkipVerify       bool   `long:"skipverify" description:"Skip verifying the server's certifcate chain and host name."`
-	Resume           bool   `long:"resume" description:"Track the old votes to the current rate"`
 
 	// HoursPrior designates the hours to subtract from the end of the
 	// voting period and is set to a default of 12 hours. These extra
@@ -511,11 +509,6 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.GaussianDerivation = 0.04
 	}
 
-	// VoteDuration can only be set with trickle enable.
-	if cfg.VoteDuration != "" && !cfg.Trickle {
-		return nil, nil, fmt.Errorf("must use --trickle when " +
-			"--voteduration is set")
-	}
 	// Duration of the vote.
 	if cfg.VoteDuration != "" {
 		// Verify we can parse the duration
@@ -535,12 +528,6 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.HoursPrior = &defaultHoursPrior
 	}
 	cfg.hoursPrior = time.Duration(*cfg.HoursPrior) * time.Hour
-
-	if !cfg.BypassProxyCheck {
-		if cfg.Trickle && cfg.Proxy == "" {
-			return nil, nil, fmt.Errorf("cannot use --trickle without --proxy")
-		}
-	}
 
 	return &cfg, remainingArgs, nil
 }

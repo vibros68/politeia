@@ -52,7 +52,7 @@ type voteAlarm struct {
 func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN string) ([]*voteAlarm, error) {
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
-	fmt.Printf("Start bunches time     : %v\n", p.cfg.startTime)
+	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
 
 	gaussion, err := NewGaussian(math.Sqrt(p.cfg.GaussianDerivation), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration))
@@ -118,7 +118,7 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 	err := WaitUntil(ectx, va.At)
 	if err != nil {
 		return fmt.Errorf("%v vote %v failed: %v",
-			time.Now(), voteID, err)
+			viewTime(time.Now()), voteID, err)
 	}
 	var voteSide = "yes"
 	if va.Vote.VoteBit == voteBitN {
@@ -135,12 +135,12 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 			err = WaitFor(ectx, d)
 			if err != nil {
 				return fmt.Errorf("%v vote %v(%s) failed: %v",
-					time.Now(), voteID, voteSide, err)
+					viewTime(time.Now()), voteID, voteSide, err)
 			}
 		}
 
 		fmt.Printf("%v voting vote %v(%s) %v%v\n",
-			time.Now(), voteID, voteSide, rmsg, va.Vote.Ticket)
+			viewTime(time.Now()), voteID, voteSide, rmsg, va.Vote.Ticket)
 
 		// Send off vote
 		b := tkv1.CastBallot{Votes: []tkv1.CastVote{va.Vote}}
@@ -247,7 +247,7 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 		// This is required to be in the lock to prevent a
 		// ballotResults race
 		fmt.Printf("%v finished vote %v(%s) -- total progress %v/%v\n",
-			time.Now(), voteID, voteSide, len(p.ballotResults), cap(p.ballotResults))
+			viewTime(time.Now()), voteID, voteSide, len(p.ballotResults), cap(p.ballotResults))
 		p.Unlock()
 
 		return nil
@@ -264,21 +264,6 @@ func randomInt64(min, max int64) (int64, error) {
 		return 0, err
 	}
 	return new(big.Int).Add(mi, r).Int64(), nil
-}
-
-func randomTime(headTime time.Time, d time.Duration) (time.Time, time.Time, error) {
-	halfDuration := int64(d / 2)
-	st, err := randomInt64(0, halfDuration*90/100) // up to 90% of half
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	et, err := randomInt64(halfDuration, int64(d))
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	startTime := headTime.Add(time.Duration(st)).Unix()
-	endTime := headTime.Add(time.Duration(et)).Unix()
-	return time.Unix(startTime, 0), time.Unix(endTime, 0), nil
 }
 
 func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote, voted int, voteBitY, voteBitN string) error {

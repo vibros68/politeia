@@ -795,10 +795,9 @@ func (p *piv) stats() error {
 		}
 
 		remainBlocks := endHeight - latestBlock
-		estRemainBlockTime := int64(remainBlocks) * int64(activeNetParams.TargetTimePerBlock)
-		timeLeft := time.Now().Unix() + estRemainBlockTime
-
-		fmt.Printf("\nToken: %s \tRemaining blocks: %v\tEst end date/time: %v\n", vp.Vote.Params.Token, remainBlocks, time.Unix(timeLeft, 0).Format(ansicDateFormat))
+		estRemainBlockTime := time.Duration(remainBlocks) * activeNetParams.TargetTimePerBlock
+		timeEnd := time.Now().Add(estRemainBlockTime)
+		fmt.Printf("Token: %s \tRemaining blocks: %v\tEst end date/time: %v\n", vp.Vote.Params.Token, remainBlocks, viewTime(timeEnd))
 
 		// gather totals for proposal
 		sepTicket, err := p.sortTicketsForProposal(vp)
@@ -1098,36 +1097,13 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	}
 
 	// Trickle in the votes if specified
-	if p.cfg.Trickle {
-		// Setup the trickler vote duration
-		err = p.setupVoteDuration(vs)
-		if err != nil {
-			return err
-		}
-
-		// Trickle votes
-		return p.alarmTrickler(token, votesToCast, votedY+votedN, voteBitY, voteBitN)
-	}
-
-	// Vote everything at once on the supplied proposal.
-	cv := tkv1.CastBallot{Votes: votesToCast}
-	//p.ballotResults = make([]tkv1.CastVoteReply, 0, len(votesToCast))
-	responseBody, err := p.makeRequest(http.MethodPost, tkv1.APIRoute,
-		tkv1.RouteCastBallot, &cv)
+	err = p.setupVoteDuration(vs)
 	if err != nil {
 		return err
 	}
 
-	var br tkv1.CastBallotReply
-	err = json.Unmarshal(responseBody, &br)
-	if err != nil {
-		return fmt.Errorf("Could not unmarshal CastVoteReply: %v",
-			err)
-	}
-	p.ballotResults = append(p.ballotResults, br.Receipts...)
-	p.votedYes = qtyY
-	p.votedNo = qtyN
-	return nil
+	// Trickle votes
+	return p.alarmTrickler(token, votesToCast, votedY+votedN, voteBitY, voteBitN)
 }
 
 // setupVoteDuration sets up the duration that will be used for trickling
@@ -1141,10 +1117,7 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 		timeLeftInVote = time.Duration(blocksLeft) * blockTime
 		timePassInVote = time.Duration(int64(vs.EndBlockHeight)-int64(vs.BestBlock)) * blockTime
 	)
-	p.cfg.startTime = time.Now()
-	if p.cfg.Resume {
-		p.cfg.startTime = time.Now().Add(-timePassInVote)
-	}
+	p.cfg.startTime = time.Now().Add(-timePassInVote)
 
 	switch {
 	case p.cfg.voteDuration.Seconds() > 0:
@@ -1158,10 +1131,7 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 	case p.cfg.voteDuration.Seconds() == 0:
 		// A vote duration was not provided. The vote duration is set to
 		// the remaining time in the vote minus the hours prior setting.
-		p.cfg.voteDuration = timeLeftInVote - p.cfg.hoursPrior
-		if p.cfg.Resume {
-			p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
-		}
+		p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
 
 		// Force the user to manually set the vote duration when the
 		// calculated duration is under 24h.
@@ -1276,7 +1246,7 @@ func (p *piv) vote(args []string) error {
 		return err
 	}
 	if qtyYes == 0 && qtyNo == 0 {
-		return fmt.Errorf("vote yes and no = 0")
+		return fmt.Errorf("request vote yes and no = 0")
 	}
 	var token = args[0]
 	names, err := p.names(token)
