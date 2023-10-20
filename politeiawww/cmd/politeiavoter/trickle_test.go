@@ -58,6 +58,7 @@ func fakePiv(t *testing.T, d time.Duration) (*piv, func()) {
 			voteDir:      filepath.Join(homeDir, defaultVoteDirname),
 			voteDuration: d,
 			testing:      true,
+			startTime:    time.Now(),
 		},
 	}, cleanup
 }
