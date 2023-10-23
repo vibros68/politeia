@@ -359,7 +359,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	return responseBody, nil
 }
 
-// getVersion retursn the server side version structure.
+// getVersion returns the server side version structure.
 func (p *piv) getVersion() (*v1.VersionReply, error) {
 	if p.version != nil {
 		return p.version, nil

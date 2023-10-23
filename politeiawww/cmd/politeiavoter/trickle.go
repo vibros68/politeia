@@ -59,10 +59,15 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 	if err != nil {
 		return nil, err
 	}
+	timeFrame := time.Duration(2.4 * float64(time.Hour))
+	var voteConf = make([]int, 70)
 
 	va := make([]*voteAlarm, len(votesToCast))
 	for k := range votesToCast {
 		t, err := randomFutureTime(gaussion)
+		timeDiff := t.Sub(p.cfg.startTime)
+		index := timeDiff / timeFrame
+		voteConf[index] = voteConf[index] + 1
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +76,8 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 			At:   t,
 		}
 	}
-
+	fmt.Println("Vote chart")
+	displayChart(voteConf, 10)
 	return va, nil
 }
 

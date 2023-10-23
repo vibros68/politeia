@@ -268,6 +268,7 @@ func (p *piv) fetchActiveProposals() ([]*tkv1.DetailsReply, error) {
 			break
 		}
 		page++
+
 	}
 
 	voteDetailsReply := make([]*tkv1.DetailsReply, 0)
