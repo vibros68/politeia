@@ -49,45 +49,93 @@ type voteAlarm struct {
 	At   time.Time     `json:"at"`   // When initial vote will be submitted
 }
 
+type bunche struct {
+	start time.Time
+	end   time.Time
+}
+
 func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN string) ([]*voteAlarm, error) {
+	if p.cfg.Gaussian {
+		return p.gaussianVoteAlarm(votesToCast)
+	}
+	bunches := make([]bunche, p.cfg.Bunches)
+	var workedBunches []bunche
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
-	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
+	fmt.Printf("Total number of bunches: %v\n", bunches)
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
 
-	gaussion, err := NewGaussian(math.Sqrt(p.cfg.GaussianDerivation), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration))
-	if err != nil {
-		return nil, err
-	}
-	timeFrame := time.Duration(2.4 * float64(time.Hour))
-	var voteConf = make([]int, 70)
-
-	va := make([]*voteAlarm, len(votesToCast))
-	for k := range votesToCast {
-		t, err := randomFutureTime(gaussion)
-		timeDiff := t.Sub(p.cfg.startTime)
-		index := timeDiff / timeFrame
-		voteConf[index] = voteConf[index] + 1
+	for i := 0; i < int(p.cfg.Bunches); i++ {
+		start, end, err := randomTime(voteDuration, p.cfg.startTime)
 		if err != nil {
 			return nil, err
 		}
+		b := bunche{
+			start: start,
+			end:   end,
+		}
+		bunches[i] = b
+		if end.Unix() > time.Now().Unix() {
+			workedBunches = append(workedBunches, b)
+		}
+		fmt.Printf("bunchID: %v start %v end %v duration %v\n",
+			i, viewTime(start), viewTime(end), end.Sub(start))
+	}
+
+	timeFrame := time.Duration(2.4 * float64(time.Hour))
+	var voteConf = make([]int, 70)
+	va := make([]*voteAlarm, len(votesToCast))
+	for k := range votesToCast {
+		i := k % len(workedBunches)
+		t, err := randomFutureTime(workedBunches[i].start, workedBunches[i].end)
+		if err != nil {
+			return nil, err
+		}
+		timeDiff := t.Sub(p.cfg.startTime)
+		index := timeDiff / timeFrame
+		voteConf[index] = voteConf[index] + 1
+
 		va[k] = &voteAlarm{
 			Vote: votesToCast[k],
 			At:   t,
 		}
 	}
+
 	fmt.Println("Vote chart")
 	displayChart(voteConf, 10)
 	return va, nil
 }
 
-func randomFutureTime(g *Gaussian) (time.Time, error) {
+func (p *piv) gaussianVoteAlarm(votesToCast []tkv1.CastVote) ([]*voteAlarm, error) {
+	voteDuration := p.cfg.voteDuration
+	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
+	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
+	fmt.Printf("Vote duration          : %v\n", voteDuration)
+	g, err := NewGaussian(math.Sqrt(p.cfg.GaussianDeviate), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration), 70)
+	if err != nil {
+		return nil, err
+	}
+	va, err := g.GenerateTime(votesToCast, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("Vote chart")
+	displayChart(g.TimeGraph, 10)
+	return va, nil
+}
+
+func randomFutureTime(startTime, endTime time.Time) (time.Time, error) {
 	now := time.Now()
+	start := new(big.Int).SetInt64(startTime.Unix())
+	end := new(big.Int).SetInt64(endTime.Unix())
+	// Generate random time to fire off vote
+
 	for {
-		t, err := g.RandomTime()
+		r, err := rand.Int(rand.Reader, new(big.Int).Sub(end, start))
 		if err != nil {
 			return time.Time{}, err
 		}
+		t := time.Unix(startTime.Unix()+r.Int64(), 0)
 		if t.Unix() > now.Unix() {
 			return t, nil
 		}
@@ -115,6 +163,21 @@ func randomDuration(min, max byte) time.Duration {
 		break
 	}
 	return time.Duration(wait[0]) * time.Second
+}
+
+func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, error) {
+	halfDuration := int64(d / 2)
+	st, err := randomInt64(0, halfDuration*90/100) // up to 90% of half
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	et, err := randomInt64(halfDuration, int64(d))
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	startTime := startPoint.Add(time.Duration(st)).Unix()
+	endTime := startPoint.Add(time.Duration(et)).Unix()
+	return time.Unix(startTime, 0), time.Unix(endTime, 0), nil
 }
 
 func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBitY, voteBitN string) error {
@@ -278,7 +341,6 @@ func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote, voted int
 	if err != nil {
 		return err
 	}
-
 	// Log work
 	err = p.jsonLog(workJournal, token, votes)
 	if err != nil {

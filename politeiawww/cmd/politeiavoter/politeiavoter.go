@@ -1115,10 +1115,12 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 		blocksLeft     = int64(vs.EndBlockHeight) - int64(vs.BestBlock)
 		blockTime      = activeNetParams.TargetTimePerBlock
 		timeLeftInVote = time.Duration(blocksLeft) * blockTime
-		timePassInVote = time.Duration(int64(vs.EndBlockHeight)-int64(vs.BestBlock)) * blockTime
+		timePassInVote = time.Duration(int64(vs.BestBlock)-int64(vs.StartBlockHeight)) * blockTime
 	)
-	p.cfg.startTime = time.Now().Add(-timePassInVote)
-
+	p.cfg.startTime = time.Now()
+	if p.cfg.Resume {
+		p.cfg.startTime = time.Now().Add(-timePassInVote)
+	}
 	switch {
 	case p.cfg.voteDuration.Seconds() > 0:
 		// A vote duration was provided
@@ -1131,7 +1133,10 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 	case p.cfg.voteDuration.Seconds() == 0:
 		// A vote duration was not provided. The vote duration is set to
 		// the remaining time in the vote minus the hours prior setting.
-		p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
+		p.cfg.voteDuration = timeLeftInVote - p.cfg.hoursPrior
+		if p.cfg.Resume {
+			p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
+		}
 
 		// Force the user to manually set the vote duration when the
 		// calculated duration is under 24h.

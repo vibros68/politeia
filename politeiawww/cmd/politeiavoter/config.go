@@ -40,6 +40,8 @@ const (
 	clientCertFile = "client.pem"
 	clientKeyFile  = "client-key.pem"
 
+	defaultBunches = uint(1)
+
 	// Testing stuff
 	testFailUnrecoverable = 1
 )
@@ -99,11 +101,12 @@ type config struct {
 	ClientKey  string `long:"clientkey" description:"Path to TLS client authentication key"`
 
 	// cache
-	CachePath    string  `long:"cachepath" description:"path to the folder store cache data"`
-	CacheTimeout float64 `long:"cachetimeout" description:"the time counted by hours to store cache, default is 7*24 hour"`
-	CacheClear   bool    `long:"cacheclear" description:"clear all cache"`
-
-	GaussianDerivation float64 `long:"gaussianderivation" description:"used to adjust Gaussian distribution, default is 0.04, suggest from 0.01 to 0.1"`
+	CachePath       string  `long:"cachepath" description:"path to the folder store cache data"`
+	CacheTimeout    float64 `long:"cachetimeout" description:"the time counted by hours to store cache, default is 7*24 hour"`
+	CacheClear      bool    `long:"cacheclear" description:"clear all cache"`
+	Resume          bool    `long:"resume" description:"used to generate time vote calculated from start vote time of proposal"`
+	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
+	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 1"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
@@ -251,6 +254,7 @@ func loadConfig(appName string) (*config, []string, error) {
 		WalletCert: defaultWalletCert,
 		ClientCert: defaultClientCert,
 		ClientKey:  defaultClientKey,
+		Bunches:    defaultBunches,
 		// HoursPrior default is set below
 	}
 
@@ -505,8 +509,8 @@ func loadConfig(appName string) (*config, []string, error) {
 	if cfg.CacheTimeout <= 0 {
 		cfg.CacheTimeout = 7 * 24
 	}
-	if cfg.GaussianDerivation == 0 {
-		cfg.GaussianDerivation = 0.04
+	if cfg.GaussianDeviate == 0 {
+		cfg.GaussianDeviate = 1
 	}
 
 	// Duration of the vote.
@@ -528,6 +532,13 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.HoursPrior = &defaultHoursPrior
 	}
 	cfg.hoursPrior = time.Duration(*cfg.HoursPrior) * time.Hour
+
+	// Number of bunches
+	if cfg.Bunches < 1 || cfg.Bunches > 100 {
+		str := "%s: number of bunches must be between 1 and 100"
+		err := fmt.Errorf(str, funcName)
+		return nil, nil, err
+	}
 
 	return &cfg, remainingArgs, nil
 }
