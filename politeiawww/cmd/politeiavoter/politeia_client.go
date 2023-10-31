@@ -15,6 +15,8 @@ import (
 const (
 	VoteBitYes = "2"
 	VoteBitNo  = "1"
+	VoteIdYes  = "yes"
+	VoteIdNo   = "no"
 )
 
 type ProposalTicketsSummary struct {

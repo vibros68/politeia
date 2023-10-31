@@ -47,12 +47,13 @@ import (
 )
 
 const (
-	cmdInventory = "inventory"
-	cmdStats     = "stats"
-	cmdVote      = "vote"
-	cmdTally     = "tally"
-	cmdVerify    = "verify"
-	cmdHelp      = "help"
+	cmdInventory  = "inventory"
+	cmdStats      = "stats"
+	cmdVote       = "vote"
+	cmdTally      = "tally"
+	cmdTallyTable = "tally-table"
+	cmdVerify     = "verify"
+	cmdHelp       = "help"
 )
 
 const (
@@ -1933,7 +1934,7 @@ func _main() error {
 
 	// Validate command
 	switch action {
-	case cmdInventory, cmdTally, cmdVote, cmdStats:
+	case cmdInventory, cmdTally, cmdTallyTable, cmdVote, cmdStats:
 		// These commands require a connection to a dcrwallet instance. Get
 		// block height to validate GPRC creds.
 		ar, err := c.wallet.Accounts(c.ctx, &pb.AccountsRequest{})
@@ -1963,6 +1964,8 @@ func _main() error {
 		err = c.vote(args[1:])
 	case cmdTally:
 		err = c.tally(args[1:])
+	case cmdTallyTable:
+		err = c.tallyTable(args[1:])
 	case cmdVerify:
 		err = c.verify(args[1:])
 	case cmdHelp:
