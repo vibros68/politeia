@@ -1887,6 +1887,8 @@ func (p *piv) help(command string) {
 		fmt.Fprintf(os.Stdout, "%s\n", voteHelpMsg)
 	case cmdTally:
 		fmt.Fprintf(os.Stdout, "%s\n", tallyHelpMsg)
+	case cmdTallyTable:
+		fmt.Fprintf(os.Stdout, "%s\n", tallyTableHelpMsg)
 	case cmdVerify:
 		fmt.Fprintf(os.Stdout, "%s\n", verifyHelpMsg)
 	}

@@ -5,12 +5,13 @@
 package main
 
 const listCmdMessage = `Available commands:
-  inventory Retrieve all proposals that are being voted on
-  vote      Vote on a proposal
-  tally     Tally votes on a proposal
-  verify    Verify votes on a proposal
-  stats     Print stats information about proposals
-  help      Print detailed help message for a command`
+  inventory   Retrieve all proposals that are being voted on
+  vote        Vote on a proposal
+  tally       Tally votes on a proposal
+  tally-table Tally votes in table
+  verify      Verify votes on a proposal
+  stats       Print stats information about proposals
+  help        Print detailed help message for a command`
 
 const inventoryHelpMsg = `inventory 
 
@@ -30,6 +31,13 @@ Arguments:
 const tallyHelpMsg = `tally "token"
 
 Tally votes on a proposal.
+
+Arguments:
+1. token   (string, required)  Proposal censorship token`
+
+const tallyTableHelpMsg = `tally-table "token"
+
+Tally votes in a table on a proposal.
 
 Arguments:
 1. token   (string, required)  Proposal censorship token`
