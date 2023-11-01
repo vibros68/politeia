@@ -912,22 +912,22 @@ func (p *piv) dumpTogo() {
 	panic("dumpTogo")
 }
 
-func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse, qtyY, qtyN int, voteBitY, voteBitN string) ([]tkv1.CastVote, error) {
+func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse, qtyY, qtyN int, voteBitY, voteBitN string) (yesVotes, noVotes, allVotes []*tkv1.CastVote, err error) {
 	var voteY, voteN int
-	var votesToCast []tkv1.CastVote
+	//var votesToCast []tkv1.CastVote
 	for _, v := range ctres.TicketAddresses {
 		if voteY == qtyY && voteN == qtyN {
 			break
 		}
 		h, err := chainhash.NewHash(v.Ticket)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		var voteBit string
 		if voteY < qtyY && voteN < qtyN {
 			choice, err := randomInt64(0, 2)
 			if err != nil {
-				return nil, err
+				return nil, nil, nil, err
 			}
 			if choice == 1 {
 				voteY++
@@ -945,14 +945,20 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 				voteBit = voteBitN
 			}
 		}
-		votesToCast = append(votesToCast, tkv1.CastVote{
+		vote := &tkv1.CastVote{
 			Token:   token,
 			Ticket:  h.String(),
 			VoteBit: voteBit,
 			// Signature set from reply below.
-		})
+		}
+		allVotes = append(allVotes, vote)
+		if voteBit == voteBitY {
+			yesVotes = append(yesVotes, vote)
+		} else {
+			noVotes = append(noVotes, vote)
+		}
 	}
-	return votesToCast, nil
+	return yesVotes, noVotes, allVotes, nil
 }
 
 func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
@@ -1060,18 +1066,18 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	ctres.TicketAddresses = eligible
 
 	// Create unsigned votes to cast.
-	votesToCast, err := p.buildVotesToCast(token, ctres, qtyY, qtyN, voteBitY, voteBitN)
+	yesVotes, noVotes, allVotes, err := p.buildVotesToCast(token, ctres, qtyY, qtyN, voteBitY, voteBitN)
 	if err != nil {
 		return err
 	}
 	// Sign all messages that comprise the votes.
 	sm := &pb.SignMessagesRequest{
 		Passphrase: passphrase,
-		Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(votesToCast)),
+		Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(allVotes)),
 	}
-	for k, v := range votesToCast {
-		cv := &v
-		msg := cv.Token + cv.Ticket + cv.VoteBit
+	for k, v := range allVotes {
+		//cv := &v
+		msg := v.Token + v.Ticket + v.VoteBit
 		sm.Messages = append(sm.Messages, &pb.SignMessagesRequest_Message{
 			Address: ctres.TicketAddresses[k].Address,
 			Message: msg,
@@ -1082,9 +1088,9 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 		return err
 	}
 	// Assert arrays are same length.
-	if len(votesToCast) != len(smr.Replies) {
+	if len(allVotes) != len(smr.Replies) {
 		return fmt.Errorf("assert len(votesToCast)) != len(Replies) -- %v "+
-			"!= %v", len(votesToCast), len(smr.Replies))
+			"!= %v", len(allVotes), len(smr.Replies))
 	}
 
 	// Ensure all the signatures worked while simultaneously setting the
@@ -1094,7 +1100,7 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 			return fmt.Errorf("signature failed index %v: %v", k, v.Error)
 		}
 
-		votesToCast[k].Signature = hex.EncodeToString(v.Signature)
+		allVotes[k].Signature = hex.EncodeToString(v.Signature)
 	}
 
 	// Trickle in the votes if specified
@@ -1104,7 +1110,7 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	}
 
 	// Trickle votes
-	return p.alarmTrickler(token, votesToCast, votedY+votedN, voteBitY, voteBitN)
+	return p.alarmTrickler(token, allVotes, yesVotes, noVotes, votedY+votedN, voteBitY, voteBitN)
 }
 
 // setupVoteDuration sets up the duration that will be used for trickling

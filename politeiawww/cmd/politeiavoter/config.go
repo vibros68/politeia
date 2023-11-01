@@ -40,7 +40,7 @@ const (
 	clientCertFile = "client.pem"
 	clientKeyFile  = "client-key.pem"
 
-	defaultBunches = uint(1)
+	defaultBunches = uint(2)
 
 	// Testing stuff
 	testFailUnrecoverable = 1
@@ -106,7 +106,7 @@ type config struct {
 	CacheClear      bool    `long:"cacheclear" description:"clear all cache"`
 	Resume          bool    `long:"resume" description:"used to generate time vote calculated from start vote time of proposal"`
 	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
-	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 1"`
+	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 2.5"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
@@ -510,7 +510,7 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.CacheTimeout = 7 * 24
 	}
 	if cfg.GaussianDeviate == 0 {
-		cfg.GaussianDeviate = 1
+		cfg.GaussianDeviate = 2.5
 	}
 
 	// Duration of the vote.
@@ -534,8 +534,8 @@ func loadConfig(appName string) (*config, []string, error) {
 	cfg.hoursPrior = time.Duration(*cfg.HoursPrior) * time.Hour
 
 	// Number of bunches
-	if cfg.Bunches < 1 || cfg.Bunches > 100 {
-		str := "%s: number of bunches must be between 1 and 100"
+	if cfg.Bunches < 2 || cfg.Bunches > 100 {
+		str := "%s: number of bunches must be between 2 and 100"
 		err := fmt.Errorf(str, funcName)
 		return nil, nil, err
 	}

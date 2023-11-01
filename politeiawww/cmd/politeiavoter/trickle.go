@@ -54,14 +54,11 @@ type bunche struct {
 	end   time.Time
 }
 
-func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN string) ([]*voteAlarm, error) {
-	if p.cfg.Gaussian {
-		return p.gaussianVoteAlarm(votesToCast)
-	}
-	bunches := make([]bunche, p.cfg.Bunches)
-	var workedBunches []bunche
+func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, error) {
+	bunchesLen := p.cfg.Bunches
+	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
-	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
+	fmt.Printf("Total number of votes  : %v\n", len(yesVotes)+len(noVotes))
 	fmt.Printf("Total number of bunches: %v\n", bunches)
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
 
@@ -75,19 +72,26 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 			end:   end,
 		}
 		bunches[i] = b
-		if end.Unix() > time.Now().Unix() {
-			workedBunches = append(workedBunches, b)
-		}
 		fmt.Printf("bunchID: %v start %v end %v duration %v\n",
 			i, viewTime(start), viewTime(end), end.Sub(start))
 	}
+	batchesYes := int(math.Round(float64(len(yesVotes)) / float64(len(yesVotes)+len(noVotes)) * float64(bunchesLen)))
+	if batchesYes == int(bunchesLen) && len(noVotes) > 0 {
+		batchesYes--
+	}
+	if batchesYes == 0 && len(yesVotes) > 0 {
+		batchesYes = 1
+	}
+	batchesNo := int(bunchesLen) - batchesYes
+	fmt.Printf("Having %d vote yes, %d vote no. Built %d bunches yes %d bunches no",
+		len(yesVotes), len(noVotes), batchesYes, batchesNo)
 
 	timeFrame := time.Duration(2.4 * float64(time.Hour))
 	var voteConf = make([]int, 70)
-	va := make([]*voteAlarm, len(votesToCast))
-	for k := range votesToCast {
-		i := k % len(workedBunches)
-		t, err := randomFutureTime(workedBunches[i].start, workedBunches[i].end)
+	va := make([]*voteAlarm, len(yesVotes)+len(noVotes))
+	for k := range yesVotes {
+		i := k % batchesYes
+		t, err := randomFutureTime(bunches[i].start, bunches[i].end)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +100,22 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 		voteConf[index] = voteConf[index] + 1
 
 		va[k] = &voteAlarm{
-			Vote: votesToCast[k],
+			Vote: *yesVotes[k],
+			At:   t,
+		}
+	}
+	for k := range noVotes {
+		i := k % batchesNo
+		t, err := randomFutureTime(bunches[i+batchesYes].start, bunches[i+batchesYes].end)
+		if err != nil {
+			return nil, err
+		}
+		timeDiff := t.Sub(p.cfg.startTime)
+		index := timeDiff / timeFrame
+		voteConf[index] = voteConf[index] + 1
+
+		va[k] = &voteAlarm{
+			Vote: *noVotes[k],
 			At:   t,
 		}
 	}
@@ -106,7 +125,7 @@ func (p *piv) generateVoteAlarm(votesToCast []tkv1.CastVote, voteBitY, voteBitN 
 	return va, nil
 }
 
-func (p *piv) gaussianVoteAlarm(votesToCast []tkv1.CastVote) ([]*voteAlarm, error) {
+func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, error) {
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
 	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
@@ -171,7 +190,15 @@ func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, er
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	et, err := randomInt64(halfDuration, int64(d))
+	endDuration := int64(time.Now().Sub(startPoint))
+	if endDuration < halfDuration {
+		endDuration = halfDuration
+		if endDuration >= int64(d) {
+			return time.Time{}, time.Time{}, fmt.Errorf("vote time is ended, it looks impossible")
+		}
+	}
+
+	et, err := randomInt64(endDuration, int64(d))
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -335,9 +362,16 @@ func randomInt64(min, max int64) (int64, error) {
 	return new(big.Int).Add(mi, r).Int64(), nil
 }
 
-func (p *piv) alarmTrickler(token string, votesToCast []tkv1.CastVote, voted int, voteBitY, voteBitN string) error {
+func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1.CastVote, voted int, voteBitY, voteBitN string) error {
 	// Generate work queue
-	votes, err := p.generateVoteAlarm(votesToCast, voteBitY, voteBitN)
+	var votes []*voteAlarm
+	var err error
+	if p.cfg.Gaussian {
+		votes, err = p.gaussianVoteAlarm(votesToCast)
+	} else {
+		votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
+	}
+
 	if err != nil {
 		return err
 	}

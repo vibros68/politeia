@@ -74,7 +74,7 @@ politeiavoter inventory
 
 This will output all eligible votes.
 ```
-Vote: 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67
+Vote: c180fc047e38e455
   Proposal        : This is a description
   Start block     : 282899
   End block       : 284915
@@ -84,12 +84,12 @@ Vote: 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67
     Id                   : no
     Description          : Don't approve proposal
     Bits                 : 1
-    To choose this option: politeiavoter vote 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67 no
+    To choose this option: politeiavoter vote c180fc047e38e455 no
   Vote Option:
     Id                   : yes
     Description          : Approve proposal
     Bits                 : 2
-    To choose this option: politeiavoter vote 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67 yes
+    To choose this option: politeiavoter vote c180fc047e38e455 yes
 ```
 
 In this example the user has **9** eligible tickets to vote.
@@ -98,7 +98,7 @@ The vote choice is printed during inventory and one can simply copy & paste
 that into the shell.
 
 ```
-politeiavoter vote 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67 yes
+politeiavoter vote c180fc047e38e455 yes
 ```
 The tool will prompt for the wallet decryption passphrase and then takes a few
 seconds to vote.
@@ -188,3 +188,24 @@ Running Tor software on the local machine with 10 votes and autodetect duration:
 ```
 politeiavoter --proxy=127.0.0.1:9050 --trickle vote 8bdebbc55ae74066cc57c76bc574fd1517111e56b3d1295bde5ba3b0bd7c3f67 yes
 ```
+
+## vibros68 changes
+* add --resume to calculate vote time from starting proposal vote
+
+Normally politeiavoter vote will start vote at the running time. Use --resume make 
+the start vote time will be the start time of the proposal's start time. Each vote time 
+is generated randomly. Vote generated in the pass time will be ignored and continue to
+generate till the time is in the future
+* vote both yes and no in the same time and vote by percent. Bellow is an example
+```
+politeiavoter vote c180fc047e38e455 yes 0.2 no 0.5
+```
+* implement gaussian distribution for calculating vote time
+```
+politeiavoter --gaussian vote c180fc047e38e455 yes 0.2 no 0.5
+```
+using `--gaussian` will generate vote time by 
+[gaussian distribution](https://en.wikipedia.org/wiki/Normal_distribution)
+algorithm. without `--gaussian` using `bunches` mode as the upstream does
+* cache request proposal api
+

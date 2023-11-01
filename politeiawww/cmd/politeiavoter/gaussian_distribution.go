@@ -80,11 +80,10 @@ func (g *Gaussian) RandomTime() (time.Time, error) {
 	return time.Unix(unix, 0), nil
 }
 
-func (g *Gaussian) GenerateTime(votesToCast []tkv1.CastVote, milestone time.Time) ([]*voteAlarm, error) {
+func (g *Gaussian) GenerateTime(votesToCast []*tkv1.CastVote, milestone time.Time) ([]*voteAlarm, error) {
 	if milestone.Unix() > g.to.Unix() {
 		return nil, fmt.Errorf("milestone time is out of range")
 	}
-	var horizontalCell = g.maxFx / 4
 	var index int
 	var timeCasts = len(votesToCast)
 	var timeSlice = make([]*voteAlarm, timeCasts)
@@ -104,40 +103,21 @@ func (g *Gaussian) GenerateTime(votesToCast []tkv1.CastVote, milestone time.Time
 		if y == 0 {
 			continue
 		}
-		for i := 0.0; i < y; i += horizontalCell {
-			if index == timeCasts {
-				break
+		randCheck, err := rand.Int(rand.Reader, big.NewInt(g.timeFrame))
+		if err != nil {
+			return nil, err
+		}
+		if float64(randCheck.Uint64())/float64(g.timeFrame) < y/g.maxFx {
+			t, err := g.timePoint(frameIndex)
+			if err != nil {
+				return nil, err
 			}
-			if (y - i) > horizontalCell {
-				t, err := g.timePoint(frameIndex)
-				if err != nil {
-					return nil, err
-				}
-				timeSlice[index] = &voteAlarm{
-					Vote: votesToCast[index],
-					At:   t,
-				}
-				index++
-				g.TimeGraph[frameIndex] = g.TimeGraph[frameIndex] + 1
-			} else {
-				randCheck, err := rand.Int(rand.Reader, big.NewInt(g.timeFrame))
-				if err != nil {
-					return nil, err
-				}
-				if float64(randCheck.Uint64())/float64(g.timeFrame) > y-i {
-					t, err := g.timePoint(frameIndex)
-					if err != nil {
-						return nil, err
-					}
-					timeSlice[index] = &voteAlarm{
-						Vote: votesToCast[index],
-						At:   t,
-					}
-					index++
-					g.TimeGraph[frameIndex] = g.TimeGraph[frameIndex] + 1
-				}
-				break
+			timeSlice[index] = &voteAlarm{
+				Vote: *votesToCast[index],
+				At:   t,
 			}
+			index++
+			g.TimeGraph[frameIndex] = g.TimeGraph[frameIndex] + 1
 		}
 		if index == timeCasts {
 			break
