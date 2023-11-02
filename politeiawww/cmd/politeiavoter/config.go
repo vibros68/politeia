@@ -107,6 +107,7 @@ type config struct {
 	Resume          bool    `long:"resume" description:"used to generate time vote calculated from start vote time of proposal"`
 	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
 	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 2.5"`
+	EmulateVote     int     `long:"emulatevote" description:"set it up will do [emulatevote] number of fake vote, used for testing"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)

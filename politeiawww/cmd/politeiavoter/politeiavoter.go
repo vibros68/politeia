@@ -961,7 +961,7 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 	return yesVotes, noVotes, allVotes, nil
 }
 
-func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
+func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
 		return err
@@ -1047,9 +1047,19 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	// Filter out tickets that have already voted or are otherwise ineligible
 	// for the wallet to sign.  Note that tickets that have already voted, but
 	// have an invalid signature are included so they may be resubmitted.
-	_, _, eligible, err := p.eligibleVotes(rr, ctres)
-	if err != nil {
-		return err
+	var eligible []*pb.CommittedTicketsResponse_TicketAddress
+	if p.cfg.EmulateVote > 0 {
+		for i := 0; i < p.cfg.EmulateVote; i++ {
+			eligible = append(eligible, &pb.CommittedTicketsResponse_TicketAddress{
+				Ticket:  tix[i],
+				Address: dr.Vote.EligibleTickets[i],
+			})
+		}
+	} else {
+		_, _, eligible, err = p.eligibleVotes(rr, ctres)
+		if err != nil {
+			return err
+		}
 	}
 
 	eligibleLen := len(eligible)
@@ -1070,37 +1080,39 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	if err != nil {
 		return err
 	}
-	// Sign all messages that comprise the votes.
-	sm := &pb.SignMessagesRequest{
-		Passphrase: passphrase,
-		Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(allVotes)),
-	}
-	for k, v := range allVotes {
-		//cv := &v
-		msg := v.Token + v.Ticket + v.VoteBit
-		sm.Messages = append(sm.Messages, &pb.SignMessagesRequest_Message{
-			Address: ctres.TicketAddresses[k].Address,
-			Message: msg,
-		})
-	}
-	smr, err := p.wallet.SignMessages(p.ctx, sm)
-	if err != nil {
-		return err
-	}
-	// Assert arrays are same length.
-	if len(allVotes) != len(smr.Replies) {
-		return fmt.Errorf("assert len(votesToCast)) != len(Replies) -- %v "+
-			"!= %v", len(allVotes), len(smr.Replies))
-	}
-
-	// Ensure all the signatures worked while simultaneously setting the
-	// signature in the vote.
-	for k, v := range smr.Replies {
-		if v.Error != "" {
-			return fmt.Errorf("signature failed index %v: %v", k, v.Error)
+	if p.cfg.EmulateVote <= 0 {
+		// Sign all messages that comprise the votes.
+		sm := &pb.SignMessagesRequest{
+			Passphrase: passphrase,
+			Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(allVotes)),
+		}
+		for k, v := range allVotes {
+			//cv := &v
+			msg := v.Token + v.Ticket + v.VoteBit
+			sm.Messages = append(sm.Messages, &pb.SignMessagesRequest_Message{
+				Address: ctres.TicketAddresses[k].Address,
+				Message: msg,
+			})
+		}
+		smr, err := p.wallet.SignMessages(p.ctx, sm)
+		if err != nil {
+			return err
+		}
+		// Assert arrays are same length.
+		if len(allVotes) != len(smr.Replies) {
+			return fmt.Errorf("assert len(votesToCast)) != len(Replies) -- %v "+
+				"!= %v", len(allVotes), len(smr.Replies))
 		}
 
-		allVotes[k].Signature = hex.EncodeToString(v.Signature)
+		// Ensure all the signatures worked while simultaneously setting the
+		// signature in the vote.
+		for k, v := range smr.Replies {
+			if v.Error != "" {
+				return fmt.Errorf("signature failed index %v: %v", k, v.Error)
+			}
+
+			allVotes[k].Signature = hex.EncodeToString(v.Signature)
+		}
 	}
 
 	// Trickle in the votes if specified
@@ -1110,7 +1122,7 @@ func (p *piv) _vote(token string, qtyY, qtyN, votedY, votedN int) error {
 	}
 
 	// Trickle votes
-	return p.alarmTrickler(token, allVotes, yesVotes, noVotes, votedY+votedN, voteBitY, voteBitN)
+	return p.alarmTrickler(token, allVotes, yesVotes, noVotes, voteBitY, voteBitN)
 }
 
 // setupVoteDuration sets up the duration that will be used for trickling
@@ -1178,18 +1190,28 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, votedY, votedN in
 		return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
 	}
 	// calculate number vote
-	votedYes, votedNo, _, total, err := p.getTotalVotes(args[0])
-	roughYes := float64(len(total)) * rateYes
-	roughNo := float64(len(total)) * rateNo
+	var votedYesLen, votedNoLen, totalLen int
+	if p.cfg.EmulateVote > 0 {
+		totalLen = p.cfg.EmulateVote
+	} else {
+		votedYes, votedNo, _, total, err := p.getTotalVotes(args[0])
+		if err != nil {
+			return 0, 0, 0, 0, err
+		}
+		votedYesLen, votedNoLen, totalLen = len(votedYes), len(votedNo), len(total)
+	}
+
+	roughYes := float64(totalLen) * rateYes
+	roughNo := float64(totalLen) * rateNo
 	voteYes := int(math.Round(roughYes))
 	voteNo := int(math.Round(roughNo))
-	if voteYes < len(votedYes) {
-		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, len(votedYes))
+	if voteYes < votedYesLen {
+		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, votedYesLen)
 	}
-	if voteNo < len(votedNo) {
-		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, len(votedNo))
+	if voteNo < votedNoLen {
+		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, votedNoLen)
 	}
-	return voteYes - len(votedYes), voteNo - len(votedNo), len(votedYes), len(votedNo), nil
+	return voteYes - votedYesLen, voteNo - votedNoLen, votedYesLen, votedNoLen, nil
 }
 
 func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []*pb.CommittedTicketsResponse_TicketAddress, err error) {
@@ -1218,7 +1240,6 @@ func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-
 	// Find eligble tickets
 	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
 	if err != nil {
@@ -1244,6 +1265,7 @@ func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []
 		return nil, nil, nil, nil, err
 	}
 	votedYes, votedNo, eligible, err = p.eligibleVotes(rr, ctres)
+	fmt.Println(len(eligible), len(ctres.TicketAddresses))
 	total = append(eligible, votedYes...)
 	total = append(total, votedNo...)
 	return
@@ -1253,7 +1275,7 @@ func (p *piv) vote(args []string) error {
 	if len(args) != 5 {
 		return fmt.Errorf("vote: not enough arguments %v", args)
 	}
-	qtyYes, qtyNo, votedYes, votedNo, err := p.validateArguments(args)
+	qtyYes, qtyNo, _, _, err := p.validateArguments(args)
 	if err != nil {
 		return err
 	}
@@ -1267,7 +1289,7 @@ func (p *piv) vote(args []string) error {
 	} else {
 		fmt.Printf("Voting on      : %s\n", names[token])
 	}
-	err = p._vote(token, qtyYes, qtyNo, votedYes, votedNo)
+	err = p._vote(token, qtyYes, qtyNo)
 	// we return err after printing details
 
 	// Verify vote replies. Already voted errors are not

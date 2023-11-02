@@ -114,7 +114,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		index := timeDiff / timeFrame
 		voteConf[index] = voteConf[index] + 1
 
-		va[k] = &voteAlarm{
+		va[k+len(yesVotes)] = &voteAlarm{
 			Vote: *noVotes[k],
 			At:   t,
 		}
@@ -209,6 +209,20 @@ func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, er
 
 func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBitY, voteBitN string) error {
 	voteID++ // make human readable
+	if p.cfg.EmulateVote > 0 {
+		p.ballotResults = append(p.ballotResults, tkv1.CastVoteReply{
+			Ticket:       va.Vote.Ticket,
+			Receipt:      "",
+			ErrorCode:    nil,
+			ErrorContext: "",
+		})
+		if va.Vote.VoteBit == voteBitY {
+			p.votedYes++
+		} else {
+			p.votedNo++
+		}
+		return nil
+	}
 
 	// Wait
 	err := WaitUntil(ectx, va.At)
@@ -362,7 +376,7 @@ func randomInt64(min, max int64) (int64, error) {
 	return new(big.Int).Add(mi, r).Int64(), nil
 }
 
-func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1.CastVote, voted int, voteBitY, voteBitN string) error {
+func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1.CastVote, voteBitY, voteBitN string) error {
 	// Generate work queue
 	var votes []*voteAlarm
 	var err error
@@ -371,7 +385,10 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1
 	} else {
 		votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
 	}
-
+	if p.cfg.EmulateVote > 0 {
+		fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -387,7 +404,6 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1
 	// Launch voting go routines
 	eg, ectx := errgroup.WithContext(p.ctx)
 	p.ballotResults = make([]tkv1.CastVoteReply, 0, len(votesToCast))
-
 	for k := range votes {
 		voterID := k
 		v := *votes[k]

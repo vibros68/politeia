@@ -94,7 +94,7 @@ func (g *Gaussian) GenerateTime(votesToCast []*tkv1.CastVote, milestone time.Tim
 		}
 		x := (float64(res.Int64()) - g.middle) / g.middle * gaussianMaxX
 		frameIndex := int64((x + gaussianMaxX) / g.xFrame)
-		frameTime := g.from.Add(time.Duration(g.timeFrame) * time.Duration(frameIndex+1))
+		frameTime := time.Unix(g.from.Unix()*(g.timeFrame*(frameIndex+1)), 0)
 		if frameTime.Unix() <= milestone.Unix() {
 			continue
 		}

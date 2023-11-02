@@ -208,4 +208,7 @@ using `--gaussian` will generate vote time by
 [gaussian distribution](https://en.wikipedia.org/wiki/Normal_distribution)
 algorithm. without `--gaussian` using `bunches` mode as the upstream does
 * cache request proposal api
+* add --emulatevote=[number of assumed vote]
+
+Do fake vote. Purpose for testing
 
