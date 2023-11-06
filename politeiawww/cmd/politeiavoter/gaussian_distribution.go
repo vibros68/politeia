@@ -17,17 +17,18 @@ type Gaussian struct {
 	from  time.Time
 	to    time.Time
 	// cache
-	maxFx     float64
-	minFx     float64
-	max       int64
-	middle    float64
-	xFrame    float64
-	yFrame    float64
-	timeFrame int64
-	XGraph    []int
-	YGraph    []int
-	TimeGraph []int
-	chartLen  int
+	maxFx        float64
+	minFx        float64
+	max          int64
+	middle       float64
+	xFrame       float64
+	yFrame       float64
+	timeFrame    int64
+	XGraph       []int
+	YGraph       []int
+	YesTimeGraph []int
+	NoTimeGraph  []int
+	chartLen     int
 }
 
 func (g *Gaussian) MaxFx() float64 {
@@ -54,7 +55,8 @@ func NewGaussian(sigma, mu float64, from, to time.Time, chartLen int) (*Gaussian
 	g.timeFrame = diff / int64(chartLen)
 	g.XGraph = make([]int, chartLen)
 	g.YGraph = make([]int, chartLen)
-	g.TimeGraph = make([]int, chartLen)
+	g.YesTimeGraph = make([]int, chartLen)
+	g.NoTimeGraph = make([]int, chartLen)
 	return &g, nil
 }
 
@@ -112,12 +114,17 @@ func (g *Gaussian) GenerateTime(votesToCast []*tkv1.CastVote, milestone time.Tim
 			if err != nil {
 				return nil, err
 			}
+			voteToCart := votesToCast[index]
 			timeSlice[index] = &voteAlarm{
-				Vote: *votesToCast[index],
+				Vote: *voteToCart,
 				At:   t,
 			}
 			index++
-			g.TimeGraph[frameIndex] = g.TimeGraph[frameIndex] + 1
+			if voteToCart.VoteBit == VoteBitYes {
+				g.YesTimeGraph[frameIndex] = g.YesTimeGraph[frameIndex] + 1
+			} else {
+				g.NoTimeGraph[frameIndex] = g.NoTimeGraph[frameIndex] + 1
+			}
 		}
 		if index == timeCasts {
 			break

@@ -59,8 +59,9 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(yesVotes)+len(noVotes))
-	fmt.Printf("Total number of bunches: %v\n", bunches)
+	fmt.Printf("Total number of bunches: %v\n", len(bunches))
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
+	fmt.Printf("Start: %s. End: %s \n", viewTime(p.cfg.startTime), p.cfg.startTime.Add(voteDuration))
 
 	for i := 0; i < int(p.cfg.Bunches); i++ {
 		start, end, err := randomTime(voteDuration, p.cfg.startTime)
@@ -83,11 +84,12 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		batchesYes = 1
 	}
 	batchesNo := int(bunchesLen) - batchesYes
-	fmt.Printf("Having %d vote yes, %d vote no. Built %d bunches yes %d bunches no",
+	fmt.Printf("Having %d vote yes, %d vote no. Built %d bunches yes %d bunches no\n",
 		len(yesVotes), len(noVotes), batchesYes, batchesNo)
 
-	timeFrame := time.Duration(2.4 * float64(time.Hour))
-	var voteConf = make([]int, 70)
+	timeFrame := voteDuration / 70
+	var yesChartConf = make([]int, 70)
+	var noChartConf = make([]int, 70)
 	va := make([]*voteAlarm, len(yesVotes)+len(noVotes))
 	for k := range yesVotes {
 		i := k % batchesYes
@@ -97,7 +99,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		}
 		timeDiff := t.Sub(p.cfg.startTime)
 		index := timeDiff / timeFrame
-		voteConf[index] = voteConf[index] + 1
+		yesChartConf[index] = yesChartConf[index] + 1
 
 		va[k] = &voteAlarm{
 			Vote: *yesVotes[k],
@@ -112,7 +114,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		}
 		timeDiff := t.Sub(p.cfg.startTime)
 		index := timeDiff / timeFrame
-		voteConf[index] = voteConf[index] + 1
+		noChartConf[index] = noChartConf[index] + 1
 
 		va[k+len(yesVotes)] = &voteAlarm{
 			Vote: *noVotes[k],
@@ -120,8 +122,10 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		}
 	}
 
-	fmt.Println("Vote chart")
-	displayChart(voteConf, 10)
+	fmt.Println("Yes vote chart")
+	displayChart(yesChartConf, 10)
+	fmt.Println("No vote chart")
+	displayChart(noChartConf, 10)
 	return va, nil
 }
 
@@ -138,8 +142,10 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, err
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Vote chart")
-	displayChart(g.TimeGraph, 10)
+	fmt.Println("Yes vote chart")
+	displayChart(g.YesTimeGraph, 10)
+	fmt.Println("No vote chart")
+	displayChart(g.NoTimeGraph, 10)
 	return va, nil
 }
 
