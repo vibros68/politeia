@@ -1033,7 +1033,7 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 		return fmt.Errorf("ticket pool verification: %v %v",
 			token, err)
 	}
-	if len(ctres.TicketAddresses) == 0 {
+	if len(ctres.TicketAddresses) == 0 && p.cfg.EmulateVote == 0 {
 		return fmt.Errorf("no eligible tickets found")
 	}
 
@@ -1077,6 +1077,7 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 
 	// Create unsigned votes to cast.
 	yesVotes, noVotes, allVotes, err := p.buildVotesToCast(token, ctres, qtyY, qtyN, voteBitY, voteBitN)
+	fmt.Println(err)
 	if err != nil {
 		return err
 	}
