@@ -108,6 +108,8 @@ type config struct {
 	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
 	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 2.5"`
 	EmulateVote     int     `long:"emulatevote" description:"set it up will do [emulatevote] number of fake vote, used for testing"`
+	ChartRows       int     `long:"chartrows"`
+	ChartCols       int     `long:"chartcols"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
@@ -512,6 +514,12 @@ func loadConfig(appName string) (*config, []string, error) {
 	}
 	if cfg.GaussianDeviate == 0 {
 		cfg.GaussianDeviate = 2.5
+	}
+	if cfg.ChartRows == 0 {
+		cfg.ChartRows = 10
+	}
+	if cfg.ChartCols == 0 {
+		cfg.ChartCols = 70
 	}
 
 	// Duration of the vote.

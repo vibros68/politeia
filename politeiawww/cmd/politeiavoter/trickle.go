@@ -87,9 +87,9 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 	fmt.Printf("Having %d vote yes, %d vote no. Built %d bunches yes %d bunches no\n",
 		len(yesVotes), len(noVotes), batchesYes, batchesNo)
 
-	timeFrame := voteDuration / 70
-	var yesChartConf = make([]int, 70)
-	var noChartConf = make([]int, 70)
+	timeFrame := voteDuration / time.Duration(p.cfg.ChartCols)
+	var yesChartConf = make([]int, p.cfg.ChartCols)
+	var noChartConf = make([]int, p.cfg.ChartCols)
 	va := make([]*voteAlarm, len(yesVotes)+len(noVotes))
 	for k := range yesVotes {
 		i := k % batchesYes
@@ -123,9 +123,9 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 	}
 
 	fmt.Println("Yes vote chart")
-	displayChart(yesChartConf, 10)
+	displayChart(yesChartConf, p.cfg.ChartRows)
 	fmt.Println("No vote chart")
-	displayChart(noChartConf, 10)
+	displayChart(noChartConf, p.cfg.ChartRows)
 	return va, nil
 }
 
@@ -134,7 +134,7 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, err
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
 	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
-	g, err := NewGaussian(math.Sqrt(p.cfg.GaussianDeviate), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration), 70)
+	g, err := NewGaussian(math.Sqrt(p.cfg.GaussianDeviate), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration), p.cfg.ChartCols)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +143,9 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, err
 		return nil, err
 	}
 	fmt.Println("Yes vote chart")
-	displayChart(g.YesTimeGraph, 10)
+	displayChart(g.YesTimeGraph, p.cfg.ChartRows)
 	fmt.Println("No vote chart")
-	displayChart(g.NoTimeGraph, 10)
+	displayChart(g.NoTimeGraph, p.cfg.ChartRows)
 	return va, nil
 }
 
