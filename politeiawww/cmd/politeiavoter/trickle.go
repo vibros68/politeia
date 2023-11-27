@@ -391,9 +391,12 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1
 	} else {
 		votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
 	}
-	if p.cfg.EmulateVote > 0 {
+	/*if p.cfg.EmulateVote > 0 {
 		fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
 		return nil
+	}*/
+	if p.cfg.IntervalStatsTable > 0 /* && p.cfg.EmulateVote == 0*/ {
+		go p.statsTableInterval(token)
 	}
 	if err != nil {
 		return err
@@ -427,4 +430,11 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1
 	}
 
 	return nil
+}
+
+func (p *piv) statsTableInterval(token string) {
+	for {
+		time.Sleep(time.Minute * time.Duration(p.cfg.IntervalStatsTable))
+		p.tallyTable([]string{token})
+	}
 }

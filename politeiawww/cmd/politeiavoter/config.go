@@ -108,8 +108,10 @@ type config struct {
 	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
 	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 2.5"`
 	EmulateVote     int     `long:"emulatevote" description:"set it up will do [emulatevote] number of fake vote, used for testing"`
-	ChartRows       int     `long:"chartrows"`
-	ChartCols       int     `long:"chartcols"`
+	ChartRows       int     `long:"chartrows" description:"the rows used to display ascii chart, default is 10"`
+	ChartCols       int     `long:"chartcols" description:"the cols used to display ascii chart, default is 70"`
+
+	IntervalStatsTable int `long:"intervalstatstable" description:"time between displaying stats table when voting, zero will ignore the displaying"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)

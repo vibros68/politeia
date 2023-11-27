@@ -18,6 +18,7 @@ func (p *piv) tallyTable(args []string) error {
 		return fmt.Errorf("tally: not enough arguments %v", args)
 	}
 	var token = args[0]
+	fmt.Printf("Getting stats table for proposal[%s] \n", token)
 	v, err := p.getVersion()
 	if err != nil {
 		return err
@@ -40,12 +41,11 @@ func (p *piv) tallyTable(args []string) error {
 	if err != nil {
 		return err
 	}
-	votedYes, votedNo, eligible, err := p.eligibleVotes(rr, ctres)
+	_, _, eligible, err := p.eligibleVotes(rr, ctres)
 
 	if err != nil {
 		return err
 	}
-	fmt.Println(len(votedYes), len(votedNo), len(eligible), err)
 	grouping, err := p.proposalGrouping(dr, eligible)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func group(ownTickets []*pb.CommittedTicketsResponse_TicketAddress, detailsReply
 	return grouping, nil
 }
 
-//TODO: temporary dupilicate, will remove
+// TODO: temporary dupilicate, will remove
 func getTicketsByBit(eligibleTickets []*pb.CommittedTicketsResponse_TicketAddress, partTickets []string) (contains []*pb.CommittedTicketsResponse_TicketAddress, err error) {
 	for _, eligibleTicket := range eligibleTickets {
 		eligibleTicketString, err := chainhash.NewHash(eligibleTicket.Ticket)

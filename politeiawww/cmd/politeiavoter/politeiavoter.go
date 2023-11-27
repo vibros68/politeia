@@ -904,7 +904,7 @@ func (p *piv) dumpQueue() {
 	panic("dumpQueue")
 }
 
-// dumpTogo dumps the votes that have not been casrt yet.
+// dumpTogo dumps the votes that have not been cast yet.
 func (p *piv) dumpTogo() {
 	p.RLock()
 	defer p.RUnlock()
@@ -1266,7 +1266,6 @@ func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []
 		return nil, nil, nil, nil, err
 	}
 	votedYes, votedNo, eligible, err = p.eligibleVotes(rr, ctres)
-	fmt.Println(len(eligible), len(ctres.TicketAddresses))
 	total = append(eligible, votedYes...)
 	total = append(total, votedNo...)
 	return
