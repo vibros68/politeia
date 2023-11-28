@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/decred/dcrd/dcrutil/v3"
 	"io"
 	"math"
 	"math/big"
@@ -473,10 +474,79 @@ func (p *piv) eligibleVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsRes
 				votedNo = append(votedNo, t)
 			}
 		}
-
 	}
 
 	return votedYes, votedNo, eligible, nil
+}
+
+func (p *piv) statsVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsResponse) (me, them *VoteStats, err error) {
+	// Put cast votes into a map to filter in linear time
+	castVotes := make(map[string]tkv1.CastVoteDetails)
+	for _, v := range rr.Votes {
+		castVotes[v.Ticket] = v
+	}
+
+	me = &VoteStats{}
+	them = &VoteStats{}
+	for _, t := range ctres.TicketAddresses {
+		h, err := chainhash.NewHash(t.Ticket)
+		if err != nil {
+			return nil, nil, err
+		}
+		mine := true
+		tx := new(wire.MsgTx)
+		var addr dcrutil.Address
+		var vr *pb.ValidateAddressResponse
+		// Filter out tickets tracked by imported xpub accounts.
+		r, err := p.wallet.GetTransaction(context.TODO(), &pb.GetTransactionRequest{
+			TransactionHash: h[:],
+		})
+		if err != nil {
+			mine = false
+			goto result
+		}
+
+		err = tx.Deserialize(bytes.NewReader(r.Transaction.Transaction))
+		if err != nil {
+			mine = false
+			goto result
+		}
+		addr, err = stake.AddrFromSStxPkScrCommitment(tx.TxOut[1].PkScript, activeNetParams.Params)
+		if err != nil {
+			mine = false
+			goto result
+		}
+		vr, err = p.wallet.ValidateAddress(context.TODO(), &pb.ValidateAddressRequest{
+			Address: addr.String(),
+		})
+		if err != nil {
+			mine = false
+			goto result
+		}
+		if vr.AccountNumber >= 1<<31-1 { // imported xpub account
+			mine = false
+			goto result
+		}
+	result:
+		detail, ok := castVotes[h.String()]
+		var owner *VoteStats
+		if mine {
+			owner = me
+		} else {
+			owner = them
+		}
+		if !ok {
+			owner.Yet++
+		} else {
+			if detail.VoteBit == VoteBitYes {
+				owner.Yes++
+			} else {
+				owner.No++
+			}
+		}
+	}
+
+	return me, them, nil
 }
 
 func (p *piv) _inventory(i tkv1.Inventory) (*tkv1.InventoryReply, error) {
@@ -748,7 +818,7 @@ func (p *piv) inventory() error {
 		// ineligible for the wallet to sign.  Note that tickets that have
 		// already voted, but have an invalid signature are included so they
 		// may be resubmitted.
-		votedY, votedN, eligible, err := p.eligibleVotes(rr, ctres)
+		myVote, _, err := p.statsVotes(rr, ctres)
 		if err != nil {
 			fmt.Printf("Eligible vote filtering error: %v %v\n",
 				dr.Vote.Params, err)
@@ -762,11 +832,12 @@ func (p *piv) inventory() error {
 		fmt.Printf("  End block       : %v\n", dr.Vote.EndBlockHeight)
 		fmt.Printf("  Mask            : %v\n", dr.Vote.Params.Mask)
 		fmt.Printf("  Eligible tickets: %v\n", len(ctres.TicketAddresses))
-		fmt.Printf("  Eligible votes  : %v\n", len(eligible))
-		fmt.Printf("  Voted yes  : %v\n", len(votedY))
-		fmt.Printf("  Voted no   : %v\n", len(votedN))
+		fmt.Printf("  Eligible votes  : %v\n", myVote.Yet)
+		fmt.Printf("  Voted yes  : %v\n", myVote.Yes)
+		fmt.Printf("  Voted no   : %v\n", myVote.No)
 		fmt.Printf("  Vote Option:\n")
 		fmt.Printf("    politeiavoter vote %v yes 0.67 no 0.34\n", dr.Vote.Params.Token)
+		fmt.Printf("or: politeiavoter --voteduration=1h vote %v mirror\n", dr.Vote.Params.Token)
 	}
 
 	return nil

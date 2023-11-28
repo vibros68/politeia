@@ -440,3 +440,13 @@ func (vc *VoterConfig) approvalRange() string {
 	}
 	return fmt.Sprintf("%.4f%%-%.4f%%", vc.ApprovalLower*100, vc.ApprovalUpper*100)
 }
+
+type VoteStats struct {
+	Yes int
+	No  int
+	Yet int
+}
+
+func (v *VoteStats) Total() int {
+	return v.Yes + v.No + v.Yet
+}
