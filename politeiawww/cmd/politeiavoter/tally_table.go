@@ -30,6 +30,9 @@ func (p *piv) tallyTable(args []string) error {
 	}
 	// Find eligble tickets
 	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
+	if err != nil {
+		return err
+	}
 	rr, err := p.voteResults(token, v.PubKey)
 	if err != nil {
 		return err
@@ -77,7 +80,7 @@ func (p *piv) getNeededVotes(proposalConfig *VoterConfig, proposal *tkv1.Details
 	}
 
 	predictedParticipationMe, err := getPredictedParticipation(float64(vig.Me.All())/float64(vig.Me.Pool),
-		proposal.Vote.StartBlockHeight, proposal.Vote.EndBlockHeight, int32(bestBlock))
+		proposal.Vote.StartBlockHeight, proposal.Vote.EndBlockHeight, bestBlock)
 	if err != nil {
 		return 0, 0, err
 	}

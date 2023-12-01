@@ -196,7 +196,7 @@ func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, er
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	endDuration := int64(time.Now().Sub(startPoint))
+	endDuration := int64(time.Since(startPoint))
 	if endDuration < halfDuration {
 		endDuration = halfDuration
 		if endDuration >= int64(d) {

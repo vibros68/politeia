@@ -213,14 +213,14 @@ func getTargetRateBoundaries(target, lower, upper float64) (float64, string) {
 		info = fmt.Sprintf("using %v", upper)
 		return upper, info
 	} else if upper > 0 && target > upper {
-		info = fmt.Sprint("using upper")
+		info = "using upper"
 		return upper, info
 	} else if lower > 0 && target < lower {
-		info = fmt.Sprint("using lower")
+		info = "using lower"
 		return lower, info
 	}
 
-	info = fmt.Sprintf("using them")
+	info = "using them"
 
 	return target, info
 }
