@@ -22,6 +22,7 @@ require (
 	github.com/decred/dcrtime/api/v2 v2.0.0-20200912200806-b1e4dbc46be9
 	github.com/decred/go-socks v1.1.0
 	github.com/decred/slog v1.1.0
+	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/go-test/deep v1.0.1
 	github.com/golang/protobuf v1.5.2
@@ -72,7 +73,6 @@ require (
 	github.com/decred/dcrd/txscript/v3 v3.0.0 // indirect
 	github.com/dgraph-io/badger v1.6.2 // indirect
 	github.com/dgraph-io/badger/v3 v3.2103.5 // indirect
-	github.com/dgraph-io/badger/v4 v4.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

@@ -116,6 +116,7 @@ type config struct {
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)
 	voteDuration  time.Duration // Parsed VoteDuration
+	isMirror      bool
 	hoursPrior    time.Duration // Converted HoursPrior
 	startTime     time.Time
 	blocksPerHour uint64

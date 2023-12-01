@@ -121,7 +121,9 @@ type piv struct {
 	wallet pb.WalletServiceClient
 	cache  *piCache
 
-	version *v1.VersionReply
+	version   *v1.VersionReply
+	summaries map[string]tkv1.Summary
+	mux       sync.RWMutex
 }
 
 func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
@@ -1032,7 +1034,44 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 	return yesVotes, noVotes, allVotes, nil
 }
 
-func (p *piv) _vote(token string, qtyY, qtyN int) error {
+func (p *piv) _vote(args []string) error {
+	startTime := time.Now()
+	token := args[0]
+	vs, err := p._summary(token)
+	if err != nil {
+		return err
+	}
+	bestBlock, err := p.GetBestBlock()
+	if err != nil {
+		return err
+	}
+	remainingBlock := vs.EndBlockHeight - uint32(bestBlock)
+	if remainingBlock <= 0 {
+		return nil
+	}
+	qtyY, qtyN, voted, total, err := p.validateArguments(args)
+	if err != nil {
+		return err
+	}
+	if voted == total {
+		return fmt.Errorf("you voted all your tickets")
+	}
+	if qtyY == 0 && qtyN == 0 {
+		return fmt.Errorf("request vote yes and no = 0")
+	}
+	err = p._processVote(token, qtyY, qtyN)
+	if p.cfg.isMirror {
+		nextCycle := startTime.Add(p.cfg.voteDuration)
+		for {
+			if time.Until(nextCycle) < 0 {
+				return p._vote(args)
+			}
+		}
+	}
+	return err
+}
+
+func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
 		return err
@@ -1053,13 +1092,9 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	}
 
 	// Verify vote is still active
-	sr, err := p._summary(token)
+	vs, err := p._summary(token)
 	if err != nil {
 		return err
-	}
-	vs, ok := sr.Summaries[token]
-	if !ok {
-		return fmt.Errorf("proposal does not exist: %v", token)
 	}
 
 	if vs.Status != tkv1.VoteStatusStarted {
@@ -1090,7 +1125,7 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 		}
 	}
 
-	// Find eligble tickets
+	// Find eligible tickets
 	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
 	if err != nil {
 		return fmt.Errorf("ticket pool corrupt: %v %v",
@@ -1148,7 +1183,6 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 
 	// Create unsigned votes to cast.
 	yesVotes, noVotes, allVotes, err := p.buildVotesToCast(token, ctres, qtyY, qtyN, voteBitY, voteBitN)
-	fmt.Println(err)
 	if err != nil {
 		return err
 	}
@@ -1188,7 +1222,7 @@ func (p *piv) _vote(token string, qtyY, qtyN int) error {
 	}
 
 	// Trickle in the votes if specified
-	err = p.setupVoteDuration(vs)
+	err = p.setupVoteDuration(*vs)
 	if err != nil {
 		return err
 	}
@@ -1246,15 +1280,39 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 	return nil
 }
 
-func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, votedY, votedN int, err error) {
-	if args[1] != "yes" {
-		return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+// validateArguments ensure the input parameter is correct and return
+// quantity vote(yes/no) will be voted, number voted and total eligible votes
+func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int, err error) {
+	var rateYes float64
+	var rateNo float64
+	me, them, err := p.getTotalVotes(args[0])
+	if err != nil {
+		return 0, 0, 0, 0, err
 	}
-	if args[3] != "no" {
-		return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+	if len(args) == 2 && args[1] == "mirror" {
+		p.cfg.isMirror = true
+		if p.cfg.voteDuration == 0 {
+			return 0, 0, 0, 0, fmt.Errorf("mirror mode require voteduration is set")
+		}
+		if p.cfg.EmulateVote > 0 {
+			return 0, 0, 0, 0, fmt.Errorf("mirror mode is not worked with emulatevote")
+		}
+		rateYes = float64(them.Yes) / float64(them.Total())
+		rateNo = float64(them.No) / float64(them.Total())
+	} else {
+		if len(args) != 5 {
+			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
+		}
+		if args[1] != "yes" {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		if args[3] != "no" {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		rateYes, _ = strconv.ParseFloat(args[2], 64)
+		rateNo, _ = strconv.ParseFloat(args[4], 64)
 	}
-	rateYes, _ := strconv.ParseFloat(args[2], 64)
-	rateNo, _ := strconv.ParseFloat(args[4], 64)
+
 	if rateYes < 0 || rateNo < 0 {
 		return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
 	}
@@ -1262,34 +1320,40 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, votedY, votedN in
 		return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
 	}
 	// calculate number vote
-	var votedYesLen, votedNoLen, totalLen int
+	var votedY, votedN int
 	if p.cfg.EmulateVote > 0 {
-		totalLen = p.cfg.EmulateVote
+		total = p.cfg.EmulateVote
 	} else {
-		votedYes, votedNo, _, total, err := p.getTotalVotes(args[0])
-		if err != nil {
-			return 0, 0, 0, 0, err
-		}
-		votedYesLen, votedNoLen, totalLen = len(votedYes), len(votedNo), len(total)
+		votedY, votedN, total = me.Yes, me.No, me.Total()
 	}
 
-	roughYes := float64(totalLen) * rateYes
-	roughNo := float64(totalLen) * rateNo
+	roughYes := float64(total) * rateYes
+	roughNo := float64(total) * rateNo
 	voteYes := int(math.Round(roughYes))
 	voteNo := int(math.Round(roughNo))
-	if voteYes < votedYesLen {
-		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, votedYesLen)
+	if !p.cfg.isMirror {
+		if voteYes < votedY {
+			return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, votedY)
+		}
+		if voteNo < votedN {
+			return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, votedN)
+		}
 	}
-	if voteNo < votedNoLen {
-		return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, votedNoLen)
+	qtyYes = voteYes - votedY
+	if qtyYes < 0 {
+		qtyYes = 0
 	}
-	return voteYes - votedYesLen, voteNo - votedNoLen, votedYesLen, votedNoLen, nil
+	qtyNo = voteNo - votedN
+	if qtyNo < 0 {
+		qtyNo = 0
+	}
+	return qtyYes, qtyNo, votedY + votedN, total, nil
 }
 
-func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []*pb.CommittedTicketsResponse_TicketAddress, err error) {
+func (p *piv) getTotalVotes(token string) (me, them *VoteStats, err error) {
 	passphrase, err := p.walletPassphrase()
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, err
 	}
 	// This assumes the account is an HD account.
 	_, err = p.wallet.GetAccountExtendedPrivKey(p.ctx,
@@ -1298,24 +1362,24 @@ func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []
 			Passphrase:    passphrase,
 		})
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	// Get server public key by calling version request.
 	v, err := p.getVersion()
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	// Get vote details.
 	dr, err := p.voteDetails(token, v.PubKey)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, err
 	}
 	// Find eligble tickets
 	tix, err := convertTicketHashes(dr.Vote.EligibleTickets)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("ticket pool corrupt: %v %v",
+		return nil, nil, fmt.Errorf("ticket pool corrupt: %v %v",
 			token, err)
 	}
 	ctres, err := p.wallet.CommittedTickets(p.ctx,
@@ -1323,35 +1387,25 @@ func (p *piv) getTotalVotes(token string) (votedYes, votedNo, eligible, total []
 			Tickets: tix,
 		})
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("ticket pool verification: %v %v",
+		return nil, nil, fmt.Errorf("ticket pool verification: %v %v",
 			token, err)
 	}
 	if len(ctres.TicketAddresses) == 0 {
-		return nil, nil, nil, nil, fmt.Errorf("no eligible tickets found")
+		return nil, nil, fmt.Errorf("no eligible tickets found")
 	}
 
 	// voteResults a list of the votes that have already been cast. We use these
 	// to filter out the tickets that have already voted.
 	rr, err := p.voteResults(token, v.PubKey)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, err
 	}
-	votedYes, votedNo, eligible, err = p.eligibleVotes(rr, ctres)
-	total = append(eligible, votedYes...)
-	total = append(total, votedNo...)
-	return
+	return p.statsVotes(rr, ctres)
 }
 
 func (p *piv) vote(args []string) error {
-	if len(args) != 5 {
-		return fmt.Errorf("vote: not enough arguments %v", args)
-	}
-	qtyYes, qtyNo, _, _, err := p.validateArguments(args)
-	if err != nil {
-		return err
-	}
-	if qtyYes == 0 && qtyNo == 0 {
-		return fmt.Errorf("request vote yes and no = 0")
+	if len(args) < 2 {
+		return fmt.Errorf("not enough arguments")
 	}
 	var token = args[0]
 	names, err := p.names(token)
@@ -1360,7 +1414,8 @@ func (p *piv) vote(args []string) error {
 	} else {
 		fmt.Printf("Voting on      : %s\n", names[token])
 	}
-	err = p._vote(token, qtyYes, qtyNo)
+
+	err = p._vote(args) //token, qtyYes, qtyNo)
 	// we return err after printing details
 
 	// Verify vote replies. Already voted errors are not
@@ -1403,7 +1458,12 @@ func (p *piv) vote(args []string) error {
 	return err
 }
 
-func (p *piv) _summary(token string) (*tkv1.SummariesReply, error) {
+func (p *piv) _summary(token string) (*tkv1.Summary, error) {
+	p.mux.Lock()
+	defer p.mux.Unlock()
+	if summary, ok := p.summaries[token]; ok {
+		return &summary, nil
+	}
 	responseBody, err := p.makeRequest(http.MethodPost,
 		tkv1.APIRoute, tkv1.RouteSummaries,
 		tkv1.Summaries{Tokens: []string{token}})
@@ -1416,8 +1476,11 @@ func (p *piv) _summary(token string) (*tkv1.SummariesReply, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not unmarshal SummariesReply: %v", err)
 	}
-
-	return &sr, nil
+	if summary, ok := sr.Summaries[token]; ok {
+		p.summaries[token] = summary
+		return &summary, nil
+	}
+	return nil, fmt.Errorf("proposal does not exist: %v", token)
 }
 
 func (p *piv) tally(args []string) error {
@@ -1674,14 +1737,10 @@ func (p *piv) verifyVote(vote string) error {
 	dir := filepath.Join(p.cfg.voteDir, vote)
 
 	// See if vote is ongoing
-	vsr, err := p._summary(vote)
+	vs, err := p._summary(vote)
 	if err != nil {
 		return fmt.Errorf("could not obtain proposal status: %v",
 			err)
-	}
-	vs, ok := vsr.Summaries[vote]
-	if !ok {
-		return fmt.Errorf("proposal does not exist: %v", vote)
 	}
 	if vs.Status != tkv1.VoteStatusFinished &&
 		vs.Status != tkv1.VoteStatusRejected &&
