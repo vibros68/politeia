@@ -54,6 +54,36 @@ type bunche struct {
 	end   time.Time
 }
 
+func (p *piv) randomVote(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, error) {
+	va := make([]*voteAlarm, len(yesVotes)+len(noVotes))
+	var startTime = p.cfg.startTime
+	var endTime = startTime.Add(p.cfg.voteDuration)
+	for k := range yesVotes {
+		t, err := randomFutureTime(startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+
+		va[k] = &voteAlarm{
+			Vote: *yesVotes[k],
+			At:   t,
+		}
+	}
+	for k := range noVotes {
+		t, err := randomFutureTime(startTime, endTime)
+		if err != nil {
+			return nil, err
+		}
+
+		va[k+len(yesVotes)] = &voteAlarm{
+			Vote: *noVotes[k],
+			At:   t,
+		}
+	}
+	fmt.Printf("Voting [%d] vote yes, [%d] vote no", len(yesVotes), len(noVotes))
+	return va, nil
+}
+
 func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, error) {
 	bunchesLen := p.cfg.Bunches
 	bunches := make([]bunche, bunchesLen)
@@ -386,15 +416,20 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1
 	// Generate work queue
 	var votes []*voteAlarm
 	var err error
-	if p.cfg.Gaussian {
-		votes, err = p.gaussianVoteAlarm(votesToCast)
+	if p.cfg.isMirror {
+		votes, err = p.randomVote(yesVotes, noVotes)
 	} else {
-		votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
+		if p.cfg.Gaussian {
+			votes, err = p.gaussianVoteAlarm(votesToCast)
+		} else {
+			votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
+		}
+		if p.cfg.EmulateVote > 0 {
+			fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
+			return nil
+		}
 	}
-	/*if p.cfg.EmulateVote > 0 {
-		fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
-		return nil
-	}*/
+
 	if p.cfg.IntervalStatsTable > 0 /* && p.cfg.EmulateVote == 0*/ {
 		go p.statsTableInterval(token)
 	}

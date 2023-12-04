@@ -191,6 +191,7 @@ func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
 		},
 		userAgent: fmt.Sprintf("politeiavoter/%s", cfg.Version),
 		cache:     cache,
+		summaries: make(map[string]tkv1.Summary),
 	}, nil
 }
 
@@ -1035,7 +1036,6 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 }
 
 func (p *piv) _vote(args []string) error {
-	startTime := time.Now()
 	token := args[0]
 	vs, err := p._summary(token)
 	if err != nil {
@@ -1056,15 +1056,18 @@ func (p *piv) _vote(args []string) error {
 	if voted == total {
 		return fmt.Errorf("you voted all your tickets")
 	}
-	if qtyY == 0 && qtyN == 0 {
+	if qtyY == 0 && qtyN == 0 && !p.cfg.isMirror {
 		return fmt.Errorf("request vote yes and no = 0")
 	}
 	err = p._processVote(token, qtyY, qtyN)
 	if p.cfg.isMirror {
-		nextCycle := startTime.Add(p.cfg.voteDuration)
 		for {
-			if time.Until(nextCycle) < 0 {
+			select {
+			case <-time.After(p.cfg.voteDuration):
 				return p._vote(args)
+			case <-p.ctx.Done():
+				return nil
+			default:
 			}
 		}
 	}
