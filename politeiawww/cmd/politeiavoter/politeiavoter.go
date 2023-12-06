@@ -63,6 +63,12 @@ const (
 	workJournal    = "work.json"
 )
 
+const (
+	voteModeMirror  = "mirror"
+	voteModeNumber  = "number"
+	voteModePercent = "percent"
+)
+
 func generateSeed() (int64, error) {
 	var seedBytes [8]byte
 	_, err := crand.Read(seedBytes[:])
@@ -839,8 +845,9 @@ func (p *piv) inventory() error {
 		fmt.Printf("  Voted yes  : %v\n", myVote.Yes)
 		fmt.Printf("  Voted no   : %v\n", myVote.No)
 		fmt.Printf("  Vote Option:\n")
-		fmt.Printf("    politeiavoter vote %v yes 0.67 no 0.34\n", dr.Vote.Params.Token)
-		fmt.Printf("or: politeiavoter --voteduration=1h vote %v mirror\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter vote %v percent yes 0.67 no 0.34\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter vote %v number yes 50 no 69\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter --voteduration=1h vote %v mirror\n", dr.Vote.Params.Token)
 	}
 
 	return nil
@@ -1288,11 +1295,20 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int, err error) {
 	var rateYes float64
 	var rateNo float64
-	me, them, err := p.getTotalVotes(args[0])
+	// we have at least 2 arguments: token id and mode vote
+	var token = args[0]
+	var mode = args[1]
+	me, them, err := p.getTotalVotes(token)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	if len(args) == 2 && args[1] == "mirror" {
+
+	var voteYes, voteNo int
+	switch mode {
+	case voteModeMirror:
+		if len(args) != 2 {
+			return 0, 0, 0, 0, fmt.Errorf("invalid arguments")
+		}
 		p.cfg.isMirror = true
 		if p.cfg.voteDuration == 0 {
 			return 0, 0, 0, 0, fmt.Errorf("mirror mode require voteduration is set")
@@ -1302,7 +1318,25 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		}
 		rateYes = float64(them.Yes) / float64(them.Total())
 		rateNo = float64(them.No) / float64(them.Total())
-	} else {
+	case voteModeNumber:
+		if len(args) != 5 {
+			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
+		}
+		if args[1] != "yes" {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		if args[3] != "no" {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		voteYes, _ = strconv.Atoi(args[2])
+		voteNo, _ = strconv.Atoi(args[4])
+		if voteYes+voteNo > me.Total() {
+			if len(args) != 5 {
+				return 0, 0, 0, 0,
+					fmt.Errorf("entered amount is greater than your total own votes: %d", me.Total())
+			}
+		}
+	case voteModePercent:
 		if len(args) != 5 {
 			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
 		}
@@ -1314,15 +1348,24 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		}
 		rateYes, _ = strconv.ParseFloat(args[2], 64)
 		rateNo, _ = strconv.ParseFloat(args[4], 64)
+		if rateYes < 0 || rateNo < 0 {
+			return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
+		}
+		if rateYes+rateNo > 1 {
+			return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
+		}
+	default:
+		return 0, 0, 0, 0, fmt.Errorf("mode [%s] is not supported", mode)
 	}
 
-	if rateYes < 0 || rateNo < 0 {
-		return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
+	if mode != voteModeNumber {
+		// calculate number vote from the rate
+		roughYes := float64(total) * rateYes
+		roughNo := float64(total) * rateNo
+		voteYes = int(math.Round(roughYes))
+		voteNo = int(math.Round(roughNo))
 	}
-	if rateYes+rateNo > 1 {
-		return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
-	}
-	// calculate number vote
+
 	var votedY, votedN int
 	if p.cfg.EmulateVote > 0 {
 		total = p.cfg.EmulateVote
@@ -1330,10 +1373,6 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		votedY, votedN, total = me.Yes, me.No, me.Total()
 	}
 
-	roughYes := float64(total) * rateYes
-	roughNo := float64(total) * rateNo
-	voteYes := int(math.Round(roughYes))
-	voteNo := int(math.Round(roughNo))
 	if !p.cfg.isMirror {
 		if voteYes < votedY {
 			return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, votedY)

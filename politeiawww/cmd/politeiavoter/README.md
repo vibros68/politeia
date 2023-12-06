@@ -196,13 +196,28 @@ Normally politeiavoter vote will start vote at the running time. Use --resume ma
 the start vote time will be the start time of the proposal's start time. Each vote time 
 is generated randomly. Vote generated in the pass time will be ignored and continue to
 generate till the time is in the future
-* vote both yes and no in the same time and vote by percent. Bellow is an example
+* vote both yes and no in the same time and support vote mode. 
+There are 3 mode: **mirror**, **percent** and **number**. 
+* **mirror** mode: yes and no vote will be calculated based on other people votes.
+we look at what percentage the other 'them' votes are and we mirror it
+
+example: 
 ```
-politeiavoter vote c180fc047e38e455 yes 0.2 no 0.5
+politeiavoter vote c180fc047e38e455 mirror
 ```
+* **percent** mode: yes and no vote will be calculated based on the percent of 
+ input entry. Bellow is an example: 
+```
+politeiavoter vote c180fc047e38e455 percent yes 0.2 no 0.5
+```
+* **number** mode: amount of yes/no vote is entered directly.
+```
+politeiavoter vote c180fc047e38e455 number yes 69 no 80
+```
+
 * implement gaussian distribution for calculating vote time
 ```
-politeiavoter --gaussian vote c180fc047e38e455 yes 0.2 no 0.5
+politeiavoter --gaussian vote c180fc047e38e455 percent yes 0.2 no 0.5
 ```
 using `--gaussian` will generate vote time by 
 [gaussian distribution](https://en.wikipedia.org/wiki/Normal_distribution)
