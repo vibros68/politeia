@@ -1319,35 +1319,33 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		rateYes = float64(them.Yes) / float64(them.Total())
 		rateNo = float64(them.No) / float64(them.Total())
 	case voteModeNumber:
-		if len(args) != 5 {
+		if len(args) != 6 {
 			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
 		}
-		if args[1] != "yes" {
+		if args[2] != "yes" {
 			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 		}
-		if args[3] != "no" {
+		if args[4] != "no" {
 			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 		}
-		voteYes, _ = strconv.Atoi(args[2])
-		voteNo, _ = strconv.Atoi(args[4])
+		voteYes, _ = strconv.Atoi(args[3])
+		voteNo, _ = strconv.Atoi(args[5])
 		if voteYes+voteNo > me.Total() {
-			if len(args) != 5 {
-				return 0, 0, 0, 0,
-					fmt.Errorf("entered amount is greater than your total own votes: %d", me.Total())
-			}
+			return 0, 0, 0, 0,
+				fmt.Errorf("entered amount is greater than your total own votes: %d", me.Total())
 		}
 	case voteModePercent:
-		if len(args) != 5 {
+		if len(args) != 6 {
 			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
 		}
-		if args[1] != "yes" {
+		if args[2] != "yes" {
 			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 		}
-		if args[3] != "no" {
+		if args[4] != "no" {
 			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
 		}
-		rateYes, _ = strconv.ParseFloat(args[2], 64)
-		rateNo, _ = strconv.ParseFloat(args[4], 64)
+		rateYes, _ = strconv.ParseFloat(args[3], 64)
+		rateNo, _ = strconv.ParseFloat(args[5], 64)
 		if rateYes < 0 || rateNo < 0 {
 			return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
 		}
@@ -1358,19 +1356,19 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		return 0, 0, 0, 0, fmt.Errorf("mode [%s] is not supported", mode)
 	}
 
+	var votedY, votedN int
+	if p.cfg.EmulateVote > 0 {
+		total = p.cfg.EmulateVote
+	} else {
+		votedY, votedN, total = me.Yes, me.No, me.Total()
+	}
+
 	if mode != voteModeNumber {
 		// calculate number vote from the rate
 		roughYes := float64(total) * rateYes
 		roughNo := float64(total) * rateNo
 		voteYes = int(math.Round(roughYes))
 		voteNo = int(math.Round(roughNo))
-	}
-
-	var votedY, votedN int
-	if p.cfg.EmulateVote > 0 {
-		total = p.cfg.EmulateVote
-	} else {
-		votedY, votedN, total = me.Yes, me.No, me.Total()
 	}
 
 	if !p.cfg.isMirror {
