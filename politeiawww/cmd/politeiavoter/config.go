@@ -111,7 +111,7 @@ type config struct {
 	ChartRows       int     `long:"chartrows" description:"the rows used to display ascii chart, default is 10"`
 	ChartCols       int     `long:"chartcols" description:"the cols used to display ascii chart, default is 70"`
 
-	IntervalStatsTable int `long:"intervalstatstable" description:"time in minute between displaying stats table when voting, zero will ignore the displaying"`
+	IntervalStatsTable int `long:"intervalstatstable" default:"60" description:"time in minute between displaying stats table when voting, zero will ignore the displaying"`
 
 	voteDir       string
 	dial          func(string, string) (net.Conn, error)

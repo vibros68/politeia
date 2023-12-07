@@ -88,10 +88,9 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 	bunchesLen := p.cfg.Bunches
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
-	fmt.Printf("Total number of votes  : %v\n", len(yesVotes)+len(noVotes))
-	fmt.Printf("Total number of bunches: %v\n", len(bunches))
-	fmt.Printf("Vote duration          : %v\n", voteDuration)
-	fmt.Printf("Start: %s. End: %s \n", viewTime(p.cfg.startTime), p.cfg.startTime.Add(voteDuration))
+	var total = len(yesVotes) + len(noVotes)
+	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), voteDuration)
+	fmt.Printf("start: %s end: %s \n", viewTime(p.cfg.startTime), viewTime(p.cfg.startTime.Add(voteDuration)))
 
 	for i := 0; i < int(p.cfg.Bunches); i++ {
 		start, end, err := randomTime(voteDuration, p.cfg.startTime)
@@ -114,7 +113,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		batchesYes = 1
 	}
 	batchesNo := int(bunchesLen) - batchesYes
-	fmt.Printf("Having %d vote yes, %d vote no. Built %d bunches yes %d bunches no\n",
+	fmt.Printf("votes: yes %d no %d  bunches: yes %d no  %d \n",
 		len(yesVotes), len(noVotes), batchesYes, batchesNo)
 
 	timeFrame := voteDuration / time.Duration(p.cfg.ChartCols)
@@ -152,9 +151,9 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		}
 	}
 
-	fmt.Println("Yes vote chart")
+	fmt.Printf("yes chart: bunches %d \n", batchesYes)
 	displayChart(yesChartConf, p.cfg.ChartRows)
-	fmt.Println("No vote chart")
+	fmt.Printf("no chart: bunches %d \n", batchesNo)
 	displayChart(noChartConf, p.cfg.ChartRows)
 	return va, nil
 }

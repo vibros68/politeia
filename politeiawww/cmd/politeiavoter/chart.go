@@ -30,10 +30,6 @@ func displayChart(votes []int, rows int) {
 		scale = 1
 	}
 
-	if rows > max {
-		fmt.Printf("\t!number of rows is greater than largest bar.. using a scale of 1\n")
-	}
-
 	for k, c := range votes {
 		scaled := int(math.Round(float64(c) * scale))
 		ch[k] = scaled
@@ -56,7 +52,6 @@ func displayChart(votes []int, rows int) {
 	count := 0
 	printIndex := rows - 1
 	for i := 0; i < rows; i++ {
-		fmt.Printf("\t")
 		for _, bar := range layout {
 			l := bar[printIndex]
 			count++

@@ -18,7 +18,7 @@ func (p *piv) tallyTable(args []string) error {
 		return fmt.Errorf("tally: not enough arguments %v", args)
 	}
 	var token = args[0]
-	fmt.Printf("Getting stats table for proposal[%s] \n", token)
+	fmt.Printf("Getting stats table... \n")
 	v, err := p.getVersion()
 	if err != nil {
 		return err

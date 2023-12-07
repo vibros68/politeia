@@ -341,7 +341,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	defer func() {
 		r.Body.Close()
 	}()
-	fmt.Printf("%s[%s] request took %s. Status code[%d]\n", method, api+route, time.Since(startTime), r.StatusCode)
+	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, time.Since(startTime))
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 
@@ -1452,7 +1452,7 @@ func (p *piv) vote(args []string) error {
 	if err != nil {
 		return err
 	} else {
-		fmt.Printf("Voting on      : %s\n", names[token])
+		fmt.Printf("proposal '%s'\n", names[token])
 	}
 
 	err = p._vote(args) //token, qtyYes, qtyNo)

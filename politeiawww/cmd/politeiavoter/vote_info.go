@@ -268,7 +268,7 @@ func neededVotes(targetApproval, budgetTickets float64, targetVotesInfo VotesInf
 	}
 
 	approvalCalculations(vig, budgetTickets, ticketsLeftParticipation)
-	fmt.Printf("\t- Needed Votes: Yes: %.f No: %.f Total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
+	fmt.Printf("needed votes: yes: %.f no: %.f total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
 		math.Round(neededYesVotes)+math.Round(neededNoVotes))
 	return
 }
@@ -344,13 +344,13 @@ func calculateNeededVotesParticipation(proposalConfig *VoterConfig, vig *VotesIn
 }
 
 func (vc *VoterConfig) printParticipationInfo() {
-	fmt.Printf("\t- Participation(mode: %s, config: %.2f%%) \n", vc.ParticipationMode, vc.Participation*100)
+	fmt.Printf("participation %.2f%% \n", vc.Participation*100)
 }
 
 func (vc *VoterConfig) printApprovalInfo(vig *VotesInfoGroup) {
 	_, boundaryInfo := getTargetRateBoundaries(vig.Public.ApprovalRate(), vc.ApprovalLower, vc.ApprovalUpper)
 	minYes, minNo, minPart, total := evaluateMinimumVotes(vig, vc)
-	fmt.Printf("\t- Approval Target: %s Them %.4f%% (%v) reach target yes %.f no %.f total %.f part %.4f%%\n", vc.approvalRange(),
+	fmt.Printf("approval target: %s them %.4f%% (%v) reach target yes %.f no %.f total %.f part %.4f%%\n", vc.approvalRange(),
 		vig.Public.ApprovalRate()*100, boundaryInfo, math.Round(minYes), math.Round(minNo), total, minPart*100)
 }
 
@@ -423,7 +423,7 @@ func approvalCalculations(vig *VotesInfoGroup, budgetTickets, ticketsLeftPartici
 	aall := fmt.Sprintf("%.4f%%-%.4f%%", toPercent(roundUpFour(lowestPossibleApproval)),
 		toPercent(roundUpFour(highestPossibleApproval)))
 
-	fmt.Printf("\t- Approval calcs: pme %s  ame %s  aall %s\n", pme, ame, aall)
+	fmt.Printf("approval calcs: pme %s  ame %s  aall %s\n", pme, ame, aall)
 }
 
 func toPercent(value float64) float64 {

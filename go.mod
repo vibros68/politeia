@@ -35,7 +35,7 @@ require (
 	github.com/gorilla/securecookie v1.1.1
 	github.com/gorilla/sessions v1.2.1
 	github.com/h2non/go-is-svg v0.0.0-20160927212452-35e8c4b0612c
-	github.com/jessevdk/go-flags v1.4.1-0.20200711081900-c17162fe8fd7
+	github.com/jessevdk/go-flags v1.5.0
 	github.com/jinzhu/gorm v1.9.12
 	github.com/jrick/logrotate v1.0.0
 	github.com/marcopeereboom/sbox v1.1.0
@@ -87,7 +87,7 @@ require (
 	github.com/lib/pq v1.9.0 // indirect
 	github.com/transparency-dev/merkle v0.0.1 // indirect
 	go.opencensus.io v0.23.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

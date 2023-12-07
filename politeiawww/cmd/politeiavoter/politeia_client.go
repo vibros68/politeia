@@ -9,7 +9,6 @@ import (
 	"github.com/decred/politeia/politeiawww/client"
 	"math/rand"
 	"net/http"
-	"time"
 )
 
 const (
@@ -210,8 +209,6 @@ func (p *piv) sortTicketsForProposal(voteDetails *tkv1.DetailsReply) (ticketCont
 }
 
 func (p *piv) fetchVoteResults(token string) (*tkv1.ResultsReply, error) {
-	startTime := time.Now()
-
 	r := tkv1.Results{
 		Token: token,
 	}
@@ -220,9 +217,6 @@ func (p *piv) fetchVoteResults(token string) (*tkv1.ResultsReply, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	route := tkv1.APIRoute + tkv1.RouteResults
-	fmt.Printf("%s request took %s\n", route, time.Since(startTime))
 
 	var rr tkv1.ResultsReply
 	err = json.Unmarshal(responseBody, &rr)
