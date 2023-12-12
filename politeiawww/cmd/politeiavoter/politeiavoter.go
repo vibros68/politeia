@@ -64,9 +64,14 @@ const (
 )
 
 const (
-	voteModeMirror  = "mirror"
 	voteModeNumber  = "number"
 	voteModePercent = "percent"
+)
+
+const (
+	voteOptionYes    = "yes"
+	voteOptionNo     = "no"
+	voteOptionMirror = "mirror"
 )
 
 func generateSeed() (int64, error) {
@@ -127,9 +132,12 @@ type piv struct {
 	wallet pb.WalletServiceClient
 	cache  *piCache
 
+	// for memcache
 	version   *v1.VersionReply
+	them      VoteStats
 	summaries map[string]tkv1.Summary
 	mux       sync.RWMutex
+	mc        *mirrorCache
 }
 
 func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
@@ -554,7 +562,7 @@ func (p *piv) statsVotes(rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsRespon
 			}
 		}
 	}
-
+	p.them = *them
 	return me, them, nil
 }
 
@@ -1066,19 +1074,7 @@ func (p *piv) _vote(args []string) error {
 	if qtyY == 0 && qtyN == 0 && !p.cfg.isMirror {
 		return fmt.Errorf("request vote yes and no = 0")
 	}
-	err = p._processVote(token, qtyY, qtyN)
-	if p.cfg.isMirror {
-		for {
-			select {
-			case <-time.After(p.cfg.voteDuration):
-				return p._vote(args)
-			case <-p.ctx.Done():
-				return nil
-			default:
-			}
-		}
-	}
-	return err
+	return p._processVote(token, qtyY, qtyN)
 }
 
 func (p *piv) _processVote(token string, qtyY, qtyN int) error {
@@ -1127,10 +1123,10 @@ func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 		voteBitY, voteBitN string
 	)
 	for _, vv := range dr.Vote.Params.Options {
-		if vv.ID == "yes" {
+		if vv.ID == voteOptionYes {
 			voteBitY = strconv.FormatUint(vv.Bit, 16)
 		}
-		if vv.ID == "no" {
+		if vv.ID == voteOptionNo {
 			voteBitN = strconv.FormatUint(vv.Bit, 16)
 		}
 	}
@@ -1298,64 +1294,10 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 	// we have at least 2 arguments: token id and mode vote
 	var token = args[0]
 	var mode = args[1]
-	me, them, err := p.getTotalVotes(token)
+	me, _, err := p.getTotalVotes(token)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-
-	var voteYes, voteNo int
-	switch mode {
-	case voteModeMirror:
-		if len(args) != 2 {
-			return 0, 0, 0, 0, fmt.Errorf("invalid arguments")
-		}
-		p.cfg.isMirror = true
-		if p.cfg.voteDuration == 0 {
-			return 0, 0, 0, 0, fmt.Errorf("mirror mode require voteduration is set")
-		}
-		if p.cfg.EmulateVote > 0 {
-			return 0, 0, 0, 0, fmt.Errorf("mirror mode is not worked with emulatevote")
-		}
-		rateYes = float64(them.Yes) / float64(them.Total())
-		rateNo = float64(them.No) / float64(them.Total())
-	case voteModeNumber:
-		if len(args) != 6 {
-			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
-		}
-		if args[2] != "yes" {
-			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
-		}
-		if args[4] != "no" {
-			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
-		}
-		voteYes, _ = strconv.Atoi(args[3])
-		voteNo, _ = strconv.Atoi(args[5])
-		if voteYes+voteNo > me.Total() {
-			return 0, 0, 0, 0,
-				fmt.Errorf("entered amount is greater than your total own votes: %d", me.Total())
-		}
-	case voteModePercent:
-		if len(args) != 6 {
-			return 0, 0, 0, 0, fmt.Errorf("vote: not enough arguments %v", args)
-		}
-		if args[2] != "yes" {
-			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
-		}
-		if args[4] != "no" {
-			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
-		}
-		rateYes, _ = strconv.ParseFloat(args[3], 64)
-		rateNo, _ = strconv.ParseFloat(args[5], 64)
-		if rateYes < 0 || rateNo < 0 {
-			return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
-		}
-		if rateYes+rateNo > 1 {
-			return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
-		}
-	default:
-		return 0, 0, 0, 0, fmt.Errorf("mode [%s] is not supported", mode)
-	}
-
 	var votedY, votedN int
 	if p.cfg.EmulateVote > 0 {
 		total = p.cfg.EmulateVote
@@ -1363,12 +1305,59 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 		votedY, votedN, total = me.Yes, me.No, me.Total()
 	}
 
-	if mode != voteModeNumber {
-		// calculate number vote from the rate
+	// validate arguments format
+	if len(args) == 6 {
+		if args[2] != voteOptionYes {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		if args[4] != voteOptionNo {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+	} else if len(args) == 4 {
+		if args[2] != voteOptionMirror {
+			return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+	} else {
+		return 0, 0, 0, 0, fmt.Errorf("invalid argument, see the example to correct it")
+	}
+
+	var voteYes, voteNo int
+	switch mode {
+	case voteModeNumber:
+		if len(args) == 6 {
+			voteYes, _ = strconv.Atoi(args[3])
+			voteNo, _ = strconv.Atoi(args[5])
+		}
+		if len(args) == 4 {
+			p.cfg.isMirror = true
+			voteYes, _ = strconv.Atoi(args[3])
+		}
+		if voteYes+voteNo > me.Total() {
+			return 0, 0, 0, 0,
+				fmt.Errorf("entered amount(%d) is greater than your total own votes: %d", voteYes+voteNo, me.Total())
+		}
+
+	case voteModePercent:
+		if len(args) == 6 {
+			rateYes, _ = strconv.ParseFloat(args[3], 64)
+			rateNo, _ = strconv.ParseFloat(args[5], 64)
+		}
+		if len(args) == 4 {
+			p.cfg.isMirror = true
+			rateYes, _ = strconv.ParseFloat(args[3], 64)
+		}
+		if rateYes < 0 || rateNo < 0 {
+			return 0, 0, 0, 0, fmt.Errorf("rate must be > 0 and < 1")
+		}
+		if rateYes+rateNo > 1 {
+			return 0, 0, 0, 0, fmt.Errorf("total rate yes and rate no is greater than 1")
+		}
 		roughYes := float64(total) * rateYes
 		roughNo := float64(total) * rateNo
 		voteYes = int(math.Round(roughYes))
 		voteNo = int(math.Round(roughNo))
+	default:
+		return 0, 0, 0, 0, fmt.Errorf("mode [%s] is not supported", mode)
 	}
 
 	if !p.cfg.isMirror {
@@ -1451,9 +1440,8 @@ func (p *piv) vote(args []string) error {
 	names, err := p.names(token)
 	if err != nil {
 		return err
-	} else {
-		fmt.Printf("proposal '%s'\n", names[token])
 	}
+	fmt.Printf("proposal '%s'\n", names[token])
 
 	err = p._vote(args) //token, qtyYes, qtyNo)
 	// we return err after printing details

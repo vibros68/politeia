@@ -450,3 +450,10 @@ type VoteStats struct {
 func (v *VoteStats) Total() int {
 	return v.Yes + v.No + v.Yet
 }
+
+func (v *VoteStats) Rate() float64 {
+	if v.Yes == v.No {
+		return 0.5
+	}
+	return float64(v.Yes) / float64(v.Yes+v.No)
+}

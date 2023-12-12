@@ -113,8 +113,13 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		batchesYes = 1
 	}
 	batchesNo := int(bunchesLen) - batchesYes
-	fmt.Printf("votes: yes %d no %d  bunches: yes %d no  %d \n",
-		len(yesVotes), len(noVotes), batchesYes, batchesNo)
+	if p.cfg.isMirror {
+		fmt.Printf("votes: %d  bunches: %d \n",
+			len(yesVotes), batchesYes)
+	} else {
+		fmt.Printf("votes: yes %d no %d  bunches: yes %d no  %d \n",
+			len(yesVotes), len(noVotes), batchesYes, batchesNo)
+	}
 
 	timeFrame := voteDuration / time.Duration(p.cfg.ChartCols)
 	var yesChartConf = make([]int, p.cfg.ChartCols)
@@ -150,11 +155,16 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 			At:   t,
 		}
 	}
+	if p.cfg.isMirror {
+		fmt.Printf("votes chart: bunches %d \n", batchesYes)
+		displayChart(yesChartConf, p.cfg.ChartRows)
+	} else {
+		fmt.Printf("yes chart: bunches %d \n", batchesYes)
+		displayChart(yesChartConf, p.cfg.ChartRows)
+		fmt.Printf("no chart: bunches %d \n", batchesNo)
+		displayChart(noChartConf, p.cfg.ChartRows)
+	}
 
-	fmt.Printf("yes chart: bunches %d \n", batchesYes)
-	displayChart(yesChartConf, p.cfg.ChartRows)
-	fmt.Printf("no chart: bunches %d \n", batchesNo)
-	displayChart(noChartConf, p.cfg.ChartRows)
 	return va, nil
 }
 
@@ -171,10 +181,15 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, err
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Yes vote chart")
-	displayChart(g.YesTimeGraph, p.cfg.ChartRows)
-	fmt.Println("No vote chart")
-	displayChart(g.NoTimeGraph, p.cfg.ChartRows)
+	if p.cfg.isMirror {
+		fmt.Println("vote chart")
+		displayChart(g.YesTimeGraph, p.cfg.ChartRows)
+	} else {
+		fmt.Println("Yes vote chart")
+		displayChart(g.YesTimeGraph, p.cfg.ChartRows)
+		fmt.Println("No vote chart")
+		displayChart(g.NoTimeGraph, p.cfg.ChartRows)
+	}
 	return va, nil
 }
 
@@ -242,6 +257,10 @@ func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, er
 	return time.Unix(startTime, 0), time.Unix(endTime, 0), nil
 }
 
+func (p *piv) mirrorVoteBit() string {
+	return vote
+}
+
 func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBitY, voteBitN string) error {
 	voteID++ // make human readable
 	if p.cfg.EmulateVote > 0 {
@@ -264,6 +283,9 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 	if err != nil {
 		return fmt.Errorf("%v vote %v failed: %v",
 			viewTime(time.Now()), voteID, err)
+	}
+	if p.cfg.isMirror {
+		va.Vote.VoteBit = p.mc.getVoteBit()
 	}
 	var voteSide = "yes"
 	if va.Vote.VoteBit == voteBitN {
@@ -375,6 +397,7 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 		}
 
 		// Success, log it and exit
+		p.mc.updateVoteBit(va.Vote.VoteBit)
 		err = p.jsonLog(successJournal, va.Vote.Token, vr)
 		if err != nil {
 			return fmt.Errorf("3 jsonLog: %v", err)
