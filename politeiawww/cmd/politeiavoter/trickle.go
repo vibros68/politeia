@@ -257,10 +257,6 @@ func randomTime(d time.Duration, startPoint time.Time) (time.Time, time.Time, er
 	return time.Unix(startTime, 0), time.Unix(endTime, 0), nil
 }
 
-func (p *piv) mirrorVoteBit() string {
-	return vote
-}
-
 func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBitY, voteBitN string) error {
 	voteID++ // make human readable
 	if p.cfg.EmulateVote > 0 {
