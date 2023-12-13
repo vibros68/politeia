@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	tkv1 "github.com/decred/politeia/politeiawww/api/ticketvote/v1"
 	"math"
 	"math/big"
 	"time"
@@ -82,7 +81,7 @@ func (g *Gaussian) RandomTime() (time.Time, error) {
 	return time.Unix(unix, 0), nil
 }
 
-func (g *Gaussian) GenerateTime(votesToCast []*tkv1.CastVote, milestone time.Time) ([]*voteAlarm, error) {
+func (g *Gaussian) GenerateTime(votesToCast []*voteAlarm, milestone time.Time) ([]*voteAlarm, error) {
 	if milestone.Unix() > g.to.Unix() {
 		return nil, fmt.Errorf("milestone time is out of range")
 	}
@@ -115,12 +114,10 @@ func (g *Gaussian) GenerateTime(votesToCast []*tkv1.CastVote, milestone time.Tim
 				return nil, err
 			}
 			voteToCart := votesToCast[index]
-			timeSlice[index] = &voteAlarm{
-				Vote: *voteToCart,
-				At:   t,
-			}
+			voteToCart.At = t
+			timeSlice[index] = voteToCart
 			index++
-			if voteToCart.VoteBit == VoteBitYes {
+			if voteToCart.Vote.VoteBit == VoteBitYes {
 				g.YesTimeGraph[frameIndex] = g.YesTimeGraph[frameIndex] + 1
 			} else {
 				g.NoTimeGraph[frameIndex] = g.NoTimeGraph[frameIndex] + 1

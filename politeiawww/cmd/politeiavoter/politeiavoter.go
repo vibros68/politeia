@@ -1001,7 +1001,7 @@ func (p *piv) dumpTogo() {
 	panic("dumpTogo")
 }
 
-func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse, qtyY, qtyN int, voteBitY, voteBitN string) (yesVotes, noVotes, allVotes []*tkv1.CastVote, err error) {
+func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse, qtyY, qtyN int, voteBitY, voteBitN string) (yesVotes, noVotes, allVotes []*voteAlarm, err error) {
 	var voteY, voteN int
 	//var votesToCast []tkv1.CastVote
 	for _, v := range ctres.TicketAddresses {
@@ -1034,11 +1034,13 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 				voteBit = voteBitN
 			}
 		}
-		vote := &tkv1.CastVote{
-			Token:   token,
-			Ticket:  h.String(),
-			VoteBit: voteBit,
-			// Signature set from reply below.
+		vote := &voteAlarm{
+			Vote: tkv1.CastVote{
+				Token:   token,
+				Ticket:  h.String(),
+				VoteBit: voteBit,
+				// Signature set from reply below.
+			},
 		}
 		allVotes = append(allVotes, vote)
 		if voteBit == voteBitY {
@@ -1199,11 +1201,10 @@ func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 			Messages:   make([]*pb.SignMessagesRequest_Message, 0, len(allVotes)),
 		}
 		for k, v := range allVotes {
-			//cv := &v
-			msg := v.Token + v.Ticket + v.VoteBit
+			v.Address = ctres.TicketAddresses[k].Address
 			sm.Messages = append(sm.Messages, &pb.SignMessagesRequest_Message{
 				Address: ctres.TicketAddresses[k].Address,
-				Message: msg,
+				Message: v.Message(),
 			})
 		}
 		smr, err := p.wallet.SignMessages(p.ctx, sm)
@@ -1223,7 +1224,7 @@ func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 				return fmt.Errorf("signature failed index %v: %v", k, v.Error)
 			}
 
-			allVotes[k].Signature = hex.EncodeToString(v.Signature)
+			allVotes[k].Vote.Signature = hex.EncodeToString(v.Signature)
 		}
 	}
 
@@ -1437,6 +1438,7 @@ func (p *piv) vote(args []string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 	var token = args[0]
+	p.mc = newMirrorCache(token, time.Minute*2, p)
 	names, err := p.names(token)
 	if err != nil {
 		return err

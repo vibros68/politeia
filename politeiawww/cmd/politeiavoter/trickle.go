@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	pb "decred.org/dcrwallet/rpc/walletrpc"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -45,8 +47,13 @@ func WaitFor(ctx context.Context, diff time.Duration) error {
 // voteAlarm represents a vote and the time at which it will be initially
 // submitted to politeia.
 type voteAlarm struct {
-	Vote tkv1.CastVote `json:"vote"` // RPC vote
-	At   time.Time     `json:"at"`   // When initial vote will be submitted
+	Vote    tkv1.CastVote `json:"vote"` // RPC vote
+	At      time.Time     `json:"at"`   // When initial vote will be submitted
+	Address string        `json:"address"`
+}
+
+func (v *voteAlarm) Message() string {
+	return v.Vote.Token + v.Vote.Ticket + v.Vote.VoteBit
 }
 
 type bunche struct {
@@ -84,7 +91,7 @@ func (p *piv) randomVote(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, erro
 	return va, nil
 }
 
-func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, error) {
+func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, error) {
 	bunchesLen := p.cfg.Bunches
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
@@ -134,11 +141,8 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		timeDiff := t.Sub(p.cfg.startTime)
 		index := timeDiff / timeFrame
 		yesChartConf[index] = yesChartConf[index] + 1
-
-		va[k] = &voteAlarm{
-			Vote: *yesVotes[k],
-			At:   t,
-		}
+		yesVotes[k].At = t
+		va[k] = yesVotes[k]
 	}
 	for k := range noVotes {
 		i := k % batchesNo
@@ -150,10 +154,8 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 		index := timeDiff / timeFrame
 		noChartConf[index] = noChartConf[index] + 1
 
-		va[k+len(yesVotes)] = &voteAlarm{
-			Vote: *noVotes[k],
-			At:   t,
-		}
+		noVotes[k].At = t
+		va[k+len(yesVotes)] = noVotes[k]
 	}
 	if p.cfg.isMirror {
 		fmt.Printf("votes chart: bunches %d \n", batchesYes)
@@ -168,7 +170,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm
 	return va, nil
 }
 
-func (p *piv) gaussianVoteAlarm(votesToCast []*tkv1.CastVote) ([]*voteAlarm, error) {
+func (p *piv) gaussianVoteAlarm(votesToCast []*voteAlarm) ([]*voteAlarm, error) {
 	voteDuration := p.cfg.voteDuration
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
 	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
@@ -282,6 +284,25 @@ func (p *piv) voteTicket(ectx context.Context, voteID int, va voteAlarm, voteBit
 	}
 	if p.cfg.isMirror {
 		va.Vote.VoteBit = p.mc.getVoteBit()
+		// re-sign vote for mirror
+		passphrase, _ := p.walletPassphrase()
+		sm := &pb.SignMessagesRequest{
+			Passphrase: passphrase,
+			Messages: []*pb.SignMessagesRequest_Message{
+				{
+					Address: va.Address,
+					Message: va.Message(),
+				},
+			},
+		}
+		smr, err := p.wallet.SignMessages(p.ctx, sm)
+		if err != nil {
+			return err
+		}
+		if len(smr.Replies) == 0 {
+			return fmt.Errorf("sign vote failed")
+		}
+		va.Vote.Signature = hex.EncodeToString(smr.Replies[0].Signature)
 	}
 	var voteSide = "yes"
 	if va.Vote.VoteBit == voteBitN {
@@ -430,22 +451,18 @@ func randomInt64(min, max int64) (int64, error) {
 	return new(big.Int).Add(mi, r).Int64(), nil
 }
 
-func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*tkv1.CastVote, voteBitY, voteBitN string) error {
+func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*voteAlarm, voteBitY, voteBitN string) error {
 	// Generate work queue
 	var votes []*voteAlarm
 	var err error
-	if p.cfg.isMirror {
-		votes, err = p.randomVote(yesVotes, noVotes)
+	if p.cfg.Gaussian {
+		votes, err = p.gaussianVoteAlarm(votesToCast)
 	} else {
-		if p.cfg.Gaussian {
-			votes, err = p.gaussianVoteAlarm(votesToCast)
-		} else {
-			votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
-		}
-		if p.cfg.EmulateVote > 0 {
-			fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
-			return nil
-		}
+		votes, err = p.batchesVoteAlarm(yesVotes, noVotes)
+	}
+	if p.cfg.EmulateVote > 0 {
+		fmt.Printf("We are at emulation mode and will stop the process here. all votes assump to be success\n")
+		return nil
 	}
 
 	if p.cfg.IntervalStatsTable > 0 /* && p.cfg.EmulateVote == 0*/ {
