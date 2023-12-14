@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -38,8 +37,6 @@ func (mc *mirrorCache) getVoteBit() string {
 			mc.noBits = 0
 		}
 	}
-	fmt.Printf("me rate: %.2f \n", mc.me.Rate())
-	fmt.Printf("them rate: %.2f \n", mc.them.Rate())
 	if mc.me.Rate() > mc.them.Rate() {
 		return VoteBitNo
 	}
