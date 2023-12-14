@@ -854,8 +854,9 @@ func (p *piv) inventory() error {
 		fmt.Printf("  Voted no   : %v\n", myVote.No)
 		fmt.Printf("  Vote Option:\n")
 		fmt.Printf("    politeiavoter vote %v percent yes 0.67 no 0.34\n", dr.Vote.Params.Token)
-		fmt.Printf("    politeiavoter vote %v number yes 50 no 69\n", dr.Vote.Params.Token)
-		fmt.Printf("    politeiavoter --voteduration=1h vote %v mirror\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter vote %v percent mirror 1.0\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter vote %v number yes 100 no 50\n", dr.Vote.Params.Token)
+		fmt.Printf("    politeiavoter vote %v number mirror 200\n", dr.Vote.Params.Token)
 	}
 
 	return nil

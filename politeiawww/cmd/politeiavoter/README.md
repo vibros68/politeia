@@ -214,7 +214,11 @@ politeiavoter vote c180fc047e38e455 percent yes 0.2 no 0.5
 ```
 politeiavoter vote c180fc047e38e455 number yes 69 no 80
 ```
-
+* **mirror** option: mirroring them vote
+```
+politeiavoter vote c180fc047e38e455 number mirror 200
+politeiavoter vote c180fc047e38e455 percent mirror 1.0
+```
 * implement gaussian distribution for calculating vote time
 ```
 politeiavoter --gaussian vote c180fc047e38e455 percent yes 0.2 no 0.5
