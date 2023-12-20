@@ -92,7 +92,7 @@ func (p *piv) randomVote(yesVotes, noVotes []*tkv1.CastVote) ([]*voteAlarm, erro
 }
 
 func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, error) {
-	bunchesLen := p.cfg.Bunches
+	bunchesLen := int(p.cfg.Bunches)
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
 	var total = len(yesVotes) + len(noVotes)
@@ -112,14 +112,18 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, er
 		fmt.Printf("bunchID: %v start %v end %v duration %v\n",
 			i, viewTime(start), viewTime(end), end.Sub(start))
 	}
-	batchesYes := int(math.Round(float64(len(yesVotes)) / float64(len(yesVotes)+len(noVotes)) * float64(bunchesLen)))
-	if batchesYes == int(bunchesLen) && len(noVotes) > 0 {
-		batchesYes--
+	var batchesYes, batchesNo int
+	if len(yesVotes) == 0 {
+		batchesNo = bunchesLen
 	}
-	if batchesYes == 0 && len(yesVotes) > 0 {
-		batchesYes = 1
+	if len(noVotes) == 0 {
+		batchesYes = bunchesLen
 	}
-	batchesNo := int(bunchesLen) - batchesYes
+	if len(yesVotes) > 0 && len(noVotes) > 0 {
+		batchesNo = bunchesLen / 2
+		batchesYes = bunchesLen - batchesNo
+	}
+
 	if p.cfg.isMirror {
 		fmt.Printf("votes: %d  bunches: %d \n",
 			len(yesVotes), batchesYes)

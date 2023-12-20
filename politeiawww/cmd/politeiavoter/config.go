@@ -106,10 +106,10 @@ type config struct {
 	CacheClear      bool    `long:"cacheclear" description:"clear all cache"`
 	Resume          bool    `long:"resume" description:"used to generate time vote calculated from start vote time of proposal"`
 	Gaussian        bool    `long:"gaussian" description:"active to use gaussian distribution to generate vote time"`
-	GaussianDeviate float64 `long:"gaussiandeviate" description:"used to adjust Gaussian derivation, default is 2.5"`
+	GaussianDeviate float64 `long:"gaussiandeviate" default:"2.5" description:"used to adjust Gaussian derivation, default is 2.5"`
 	EmulateVote     int     `long:"emulatevote" description:"set it up will do [emulatevote] number of fake vote, used for testing"`
-	ChartRows       int     `long:"chartrows" description:"the rows used to display ascii chart, default is 10"`
-	ChartCols       int     `long:"chartcols" description:"the cols used to display ascii chart, default is 70"`
+	ChartRows       int     `long:"chartrows" default:"20" description:"the rows used to display ascii chart, default is 20"`
+	ChartCols       int     `long:"chartcols" default:"180" description:"the cols used to display ascii chart, default is 180"`
 
 	IntervalStatsTable int `long:"intervalstatstable" default:"60" description:"time in minute between displaying stats table when voting, zero will ignore the displaying"`
 
@@ -514,15 +514,6 @@ func loadConfig(appName string) (*config, []string, error) {
 	}
 	if cfg.CacheTimeout <= 0 {
 		cfg.CacheTimeout = 7 * 24
-	}
-	if cfg.GaussianDeviate == 0 {
-		cfg.GaussianDeviate = 2.5
-	}
-	if cfg.ChartRows == 0 {
-		cfg.ChartRows = 10
-	}
-	if cfg.ChartCols == 0 {
-		cfg.ChartCols = 70
 	}
 
 	// Duration of the vote.
