@@ -349,7 +349,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	defer func() {
 		r.Body.Close()
 	}()
-	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, time.Since(startTime))
+	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, viewDuration(time.Since(startTime)))
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 
@@ -588,7 +588,7 @@ func (p *piv) _inventory(i tkv1.Inventory) (*tkv1.InventoryReply, error) {
 func (p *piv) voteDetails(token, serverPubKey string) (*tkv1.DetailsReply, error) {
 	var cacheKey = http.MethodPost + tkv1.APIRoute + tkv1.RouteDetails + token
 	responseBody, err := p.cache.Get(cacheKey)
-	if err != nil {
+	if err != nil || len(responseBody) == 0 {
 		d := tkv1.Details{
 			Token: token,
 		}
@@ -1208,6 +1208,7 @@ func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 				Message: v.Message(),
 			})
 		}
+		fmt.Println("signing tickets with dcrwallet")
 		smr, err := p.wallet.SignMessages(p.ctx, sm)
 		if err != nil {
 			return err

@@ -96,7 +96,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, er
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
 	var total = len(yesVotes) + len(noVotes)
-	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), voteDuration)
+	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), viewDuration(voteDuration))
 	fmt.Printf("start: %s end: %s \n", viewTime(p.cfg.startTime), viewTime(p.cfg.startTime.Add(voteDuration)))
 
 	for i := 0; i < int(p.cfg.Bunches); i++ {
@@ -162,12 +162,12 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, er
 		va[k+len(yesVotes)] = noVotes[k]
 	}
 	if p.cfg.isMirror {
-		fmt.Printf("votes chart: bunches %d \n", batchesYes)
+		fmt.Printf("votes chart: bunches %d, largest %v *scaled to %v rows \n", batchesYes, findMax(yesChartConf), p.cfg.ChartRows)
 		displayChart(yesChartConf, p.cfg.ChartRows)
 	} else {
-		fmt.Printf("yes chart: bunches %d \n", batchesYes)
+		fmt.Printf("yes chart: bunches %d, largest %v *scaled to %v rows \n", batchesYes, findMax(yesChartConf), p.cfg.ChartRows)
 		displayChart(yesChartConf, p.cfg.ChartRows)
-		fmt.Printf("no chart: bunches %d \n", batchesNo)
+		fmt.Printf("no chart: bunches %d, largest %v *scaled to %v rows \n", batchesNo, findMax(noChartConf), p.cfg.ChartRows)
 		displayChart(noChartConf, p.cfg.ChartRows)
 	}
 
@@ -188,12 +188,12 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*voteAlarm) ([]*voteAlarm, error) 
 		return nil, err
 	}
 	if p.cfg.isMirror {
-		fmt.Println("vote chart")
+		fmt.Printf("vote chart, largest %v *scaled to %v rows \n", findMax(g.YesTimeGraph), p.cfg.ChartRows)
 		displayChart(g.YesTimeGraph, p.cfg.ChartRows)
 	} else {
-		fmt.Println("Yes vote chart")
+		fmt.Printf("Yes vote chart, largest %v *scaled to %v rows \n", findMax(g.YesTimeGraph), p.cfg.ChartRows)
 		displayChart(g.YesTimeGraph, p.cfg.ChartRows)
-		fmt.Println("No vote chart")
+		fmt.Printf("No vote chart, largest %v *scaled to %v rows \n", findMax(g.NoTimeGraph), p.cfg.ChartRows)
 		displayChart(g.NoTimeGraph, p.cfg.ChartRows)
 	}
 	return va, nil
@@ -508,7 +508,7 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*vote
 
 func (p *piv) statsTableInterval(token string) {
 	for {
-		time.Sleep(time.Minute * time.Duration(p.cfg.IntervalStatsTable))
 		p.tallyTable([]string{token})
+		time.Sleep(time.Minute * time.Duration(p.cfg.IntervalStatsTable))
 	}
 }

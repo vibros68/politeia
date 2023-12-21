@@ -3,7 +3,6 @@ package main
 import (
 	pb "decred.org/dcrwallet/rpc/walletrpc"
 	"fmt"
-	"github.com/decred/dcrd/chaincfg/chainhash"
 	tkv1 "github.com/decred/politeia/politeiawww/api/ticketvote/v1"
 	"math"
 	"os"
@@ -44,12 +43,11 @@ func (p *piv) tallyTable(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _, eligible, err := p.eligibleVotes(rr, ctres)
-
+	votedYes, votedNo, eligible, err := p.eligibleVotes(rr, ctres)
 	if err != nil {
 		return err
 	}
-	grouping, err := p.proposalGrouping(dr, eligible)
+	grouping, err := p.proposalGrouping(dr, eligible, votedYes, votedNo)
 	if err != nil {
 		return err
 	}
@@ -102,22 +100,24 @@ func (p *piv) getNeededVotes(proposalConfig *VoterConfig, proposal *tkv1.Details
 	return int32(neededYesVotes), int32(neededNoVotes), nil
 }
 
-func (p *piv) proposalGrouping(details *tkv1.DetailsReply, eligibleTickets []*pb.CommittedTicketsResponse_TicketAddress) (*VotesInfoGroup, error) {
+func (p *piv) proposalGrouping(details *tkv1.DetailsReply, eligibleTickets, votedYes, votedNo []*pb.CommittedTicketsResponse_TicketAddress) (*VotesInfoGroup, error) {
 
 	votesResultsReply, err := p.fetchVoteResults(details.Vote.Params.Token)
 	if err != nil {
 		return nil, err
 	}
 
-	return group(eligibleTickets, details, votesResultsReply)
+	return group(eligibleTickets, votedYes, votedNo, details, votesResultsReply)
 }
 
-func group(ownTickets []*pb.CommittedTicketsResponse_TicketAddress, detailsReply *tkv1.DetailsReply, voteResults *tkv1.ResultsReply) (*VotesInfoGroup, error) {
+func group(eligibleTickets, votedYes, votedNo []*pb.CommittedTicketsResponse_TicketAddress, detailsReply *tkv1.DetailsReply, voteResults *tkv1.ResultsReply) (*VotesInfoGroup, error) {
 	var me, public, total VotesInfo
-	var ownPool int
-
+	me = VotesInfo{
+		Yes:  uint(len(votedYes)),
+		No:   uint(len(votedNo)),
+		Pool: len(eligibleTickets) + len(votedYes) + len(votedNo),
+	}
 	pool := len(detailsReply.Vote.EligibleTickets)
-	ownPool = len(ownTickets)
 	// group cast votes into Yes and No votes
 	count := make(map[uint64]TicketsCounting)
 	for _, v := range voteResults.Votes {
@@ -134,49 +134,24 @@ func group(ownTickets []*pb.CommittedTicketsResponse_TicketAddress, detailsReply
 
 	for _, vo := range detailsReply.Vote.Params.Options {
 		part := count[vo.Bit]
-		tickets, err := getTicketsByBit(ownTickets, part.Tickets)
-		if err != nil {
-			return nil, err
-		}
 
-		votes := uint(len(tickets))
 		if vo.ID == VoteIdYes {
 			total.Yes = part.Count
-			me.Yes = votes
 			public.Yes = total.Yes - me.Yes
 		} else if vo.ID == VoteIdNo {
 			total.No = part.Count
-			me.No = votes
 			public.No = total.No - me.No
 		}
 	}
 
 	total.Pool = pool
-	public.Pool = pool - ownPool
-	me.Pool = ownPool
+	public.Pool = pool - me.Pool
 
 	grouping := &VotesInfoGroup{
 		Me:     me,
 		Public: public,
 	}
 	return grouping, nil
-}
-
-// TODO: temporary dupilicate, will remove
-func getTicketsByBit(eligibleTickets []*pb.CommittedTicketsResponse_TicketAddress, partTickets []string) (contains []*pb.CommittedTicketsResponse_TicketAddress, err error) {
-	for _, eligibleTicket := range eligibleTickets {
-		eligibleTicketString, err := chainhash.NewHash(eligibleTicket.Ticket)
-		if err != nil {
-			//err = &RoutineError{err}
-			return contains, err
-		}
-		for _, part := range partTickets {
-			if eligibleTicketString.String() == part {
-				contains = append(contains, eligibleTicket)
-			}
-		}
-	}
-	return
 }
 
 func (p *piv) printTallyTable(proposal *tkv1.DetailsReply, grouping *VotesInfoGroup) error {

@@ -41,7 +41,9 @@ func (p *piCache) openDb() (*badger.DB, error) {
 }
 
 func (p *piCache) Set(key string, data []byte) error {
+	fmt.Printf("storing cache for: %s \n", key)
 	db, err := p.openDb()
+	defer db.Close()
 	if err != nil {
 		return err
 	}
@@ -59,7 +61,9 @@ func (p *piCache) Set(key string, data []byte) error {
 }
 
 func (p *piCache) Get(key string) ([]byte, error) {
+	fmt.Printf("fetching cache for: %s \n", key)
 	db, err := p.openDb()
+	defer db.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +89,9 @@ func (p *piCache) Get(key string) ([]byte, error) {
 }
 
 func (p *piCache) Clear() error {
+	fmt.Println("clearing all cache")
 	db, err := p.openDb()
+	defer db.Close()
 	if err != nil {
 		return err
 	}
