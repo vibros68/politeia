@@ -349,7 +349,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	defer func() {
 		r.Body.Close()
 	}()
-	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, viewDuration(time.Since(startTime)))
+	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, formatDuration(time.Since(startTime)))
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 

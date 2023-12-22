@@ -96,7 +96,7 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, er
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
 	var total = len(yesVotes) + len(noVotes)
-	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), viewDuration(voteDuration))
+	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), formatDuration(voteDuration))
 	fmt.Printf("start: %s end: %s \n", viewTime(p.cfg.startTime), viewTime(p.cfg.startTime.Add(voteDuration)))
 
 	for i := 0; i < int(p.cfg.Bunches); i++ {
