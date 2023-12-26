@@ -96,8 +96,8 @@ func (p *piv) batchesVoteAlarm(yesVotes, noVotes []*voteAlarm) ([]*voteAlarm, er
 	bunches := make([]bunche, bunchesLen)
 	voteDuration := p.cfg.voteDuration
 	var total = len(yesVotes) + len(noVotes)
-	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), formatDuration(voteDuration))
-	fmt.Printf("start: %s end: %s \n", viewTime(p.cfg.startTime), viewTime(p.cfg.startTime.Add(voteDuration)))
+	fmt.Printf("votes %d  bunches %d  duration %s \n", total, len(bunches), voteDuration)
+	fmt.Printf("start: %s end: %s \n", viewTime(p.cfg.startTime), viewTime(p.cfg.endTime))
 
 	for i := 0; i < int(p.cfg.Bunches); i++ {
 		start, end, err := randomTime(voteDuration, p.cfg.startTime)
@@ -470,7 +470,7 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*vote
 	}
 
 	if p.cfg.IntervalStatsTable > 0 /* && p.cfg.EmulateVote == 0*/ {
-		go p.statsTableInterval(token)
+		go p.statsTableInterval()
 	}
 	if err != nil {
 		return err
@@ -506,9 +506,9 @@ func (p *piv) alarmTrickler(token string, votesToCast, yesVotes, noVotes []*vote
 	return nil
 }
 
-func (p *piv) statsTableInterval(token string) {
+func (p *piv) statsTableInterval() {
 	for {
-		p.tallyTable([]string{token})
+		p.tallyTable(p.args)
 		time.Sleep(time.Minute * time.Duration(p.cfg.IntervalStatsTable))
 	}
 }

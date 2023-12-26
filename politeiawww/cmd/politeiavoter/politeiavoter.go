@@ -138,6 +138,7 @@ type piv struct {
 	summaries map[string]tkv1.Summary
 	mux       sync.RWMutex
 	mc        *mirrorCache
+	args      []string
 }
 
 func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
@@ -1054,6 +1055,7 @@ func (p *piv) buildVotesToCast(token string, ctres *pb.CommittedTicketsResponse,
 }
 
 func (p *piv) _vote(args []string) error {
+	p.args = args
 	token := args[0]
 	vs, err := p._summary(token)
 	if err != nil {
@@ -1251,10 +1253,13 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 		timeLeftInVote = time.Duration(blocksLeft) * blockTime
 		timePassInVote = time.Duration(int64(vs.BestBlock)-int64(vs.StartBlockHeight)) * blockTime
 	)
-	p.cfg.startTime = time.Now()
+	now := time.Now()
+	p.cfg.startTime = now
+	p.cfg.endTime = now.Add(timeLeftInVote)
 	if p.cfg.Resume {
-		p.cfg.startTime = time.Now().Add(-timePassInVote)
+		p.cfg.startTime = now.Add(-timePassInVote)
 	}
+	fmt.Println("start time: ", p.cfg.startTime, vs.BestBlock, blockTime)
 	switch {
 	case p.cfg.voteDuration.Seconds() > 0:
 		// A vote duration was provided

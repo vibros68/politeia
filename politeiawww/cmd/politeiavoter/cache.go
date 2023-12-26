@@ -61,7 +61,7 @@ func (p *piCache) Set(key string, data []byte) error {
 }
 
 func (p *piCache) Get(key string) ([]byte, error) {
-	fmt.Printf("fetching cache for: %s \n", key)
+	var startTime = time.Now()
 	db, err := p.openDb()
 	defer db.Close()
 	if err != nil {
@@ -85,17 +85,18 @@ func (p *piCache) Get(key string) ([]byte, error) {
 		}
 		return fmt.Errorf("the data is timeout")
 	})
+	fmt.Printf("*fetched cache: %s %s \n", key, formatDuration(time.Since(startTime)))
 	return record.Data, err
 }
 
 func (p *piCache) Clear() error {
-	fmt.Println("clearing all cache")
+	var startTime = time.Now()
 	db, err := p.openDb()
 	defer db.Close()
 	if err != nil {
 		return err
 	}
-	return db.Update(func(txn *badger.Txn) error {
+	err = db.Update(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchSize = 10
 		it := txn.NewIterator(opts)
@@ -110,4 +111,6 @@ func (p *piCache) Clear() error {
 		}
 		return nil
 	})
+	fmt.Printf("*cleared all cache %s \n", formatDuration(time.Since(startTime)))
+	return err
 }

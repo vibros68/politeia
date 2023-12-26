@@ -3,23 +3,15 @@ package main
 import (
 	"fmt"
 	"math"
-	"time"
 )
 
 const (
-	ModeAll           = "all"
-	ModeMe            = "me"
-	ModeThem          = "them"
-	ModeParticipation = "participation"
+	ModeAll  = "all"
+	ModeMe   = "me"
+	ModeThem = "them"
 )
 
 const (
-	ConstantMode = "constant"
-	SpreadMode   = "spread"
-	BarMode      = "bar"
-
-	DefaultActive                  = true
-	DefaultPrintTable              = true
 	DefaultPrioritizeParticipation = false
 	DefaultParticipation           = 1.0
 	DefaultParticipationRate       = 0.5
@@ -27,53 +19,18 @@ const (
 	DefaultApprovalMode            = ModeAll
 	DefaultApprovalUpper           = 1
 	DefaultApprovalLower           = 1
-	DefaultConstantSpeedSec        = 0
-	DefaultResyncSec               = 3600
-	DefaultActiveVotesUpdateSec    = 7200
-	DefaultWindow                  = 1
-	DefaultVoteRandomness          = 1
-	DefaultVoteStatusUpdateSec     = 3600
-	DefaultAsyncVoteLimit          = 3
-	DefaultBarSize                 = 3600
-	DefaultBarSpread               = 1.0
-	DefaultBarSampling             = 1.0
-	DefaultBarRows                 = 0
-	DefaultBarChar                 = 100
-	DefaultBarRandomness           = 1.0
-	DefaultPriority                = true
-	DefaultPriorityThreshold       = 0.1
 )
 
 var (
 	defaultVoter = VoterConfig{
-		Active:                  DefaultActive,
-		PrintTable:              DefaultPrintTable,
-		Name:                    "default",
-		ProposalID:              "default",
-		SpeedMode:               ConstantMode,
-		BarSize:                 DefaultBarSize,
-		YesBarSpread:            DefaultBarSpread,
-		NoBarSpread:             DefaultBarSpread,
-		YesBarSampling:          DefaultBarSampling,
-		NoBarSampling:           DefaultBarSampling,
-		BarRows:                 DefaultBarRows,
-		BarChar:                 DefaultBarChar,
-		YesBarRandomness:        DefaultBarRandomness,
-		NoBarRandomness:         DefaultBarRandomness,
 		PrioritizeParticipation: DefaultPrioritizeParticipation,
 		Participation:           DefaultParticipation,
 		ParticipationYes:        DefaultParticipationRate,
 		ParticipationNo:         DefaultParticipationRate,
 		ParticipationMode:       DefaultParticipationMode,
 		ApprovalMode:            DefaultApprovalMode,
-		Priority:                DefaultPriority,
-		PriorityThreshold:       DefaultPriorityThreshold,
 		ApprovalUpper:           DefaultApprovalUpper,
 		ApprovalLower:           DefaultApprovalLower,
-		ConstantSpeedSec:        DefaultConstantSpeedSec,
-		Window:                  DefaultWindow,
-		VoteRandomness:          DefaultVoteRandomness,
-		ResyncSec:               DefaultResyncSec,
 	}
 )
 
@@ -158,38 +115,15 @@ func (v *VotesInfo) remainingVotes() int {
 }
 
 type VoterConfig struct {
-	Active                  bool          `json:"active"`
-	PrintTable              bool          `json:"print_table"`
-	Name                    string        `json:"name"`
-	ProposalID              string        `json:"proposal_id"`
-	SpeedMode               string        `json:"speed_mode"`
-	BarSize                 float64       `json:"bar_size"`
-	YesBarSpread            float64       `json:"yes_bar_spread"`
-	NoBarSpread             float64       `json:"no_bar_spread"`
-	YesBarSampling          float64       `json:"yes_bar_sampling"`
-	NoBarSampling           float64       `json:"no_bar_sampling"`
-	BarRows                 int           `json:"bar_rows"`
-	BarChar                 float64       `json:"bar_char"`
-	YesBarRandomness        float64       `json:"yes_bar_randomness"`
-	NoBarRandomness         float64       `json:"no_bar_randomness"`
-	EmptyYesBars            float64       `json:"empty_yes_bars"`
-	EmptyNoBars             float64       `json:"empty_no_bars"`
-	Participation           float64       `json:"participation"`
-	PrioritizeParticipation bool          `json:"prioritize_participation"`
-	ParticipationMode       string        `json:"participation_mode"`
-	ParticipationYes        float64       `json:"participation_yes"`
-	ParticipationNo         float64       `json:"participation_no"`
-	ApprovalMode            string        `json:"approval_mode"`
-	ApprovalUpper           float64       `json:"approval_upper"`
-	ApprovalLower           float64       `json:"approval_lower"`
-	Priority                bool          `json:"priority"`
-	PriorityThreshold       float64       `json:"priority_threshold"`
-	Filter                  string        `json:"filter"`
-	Window                  float64       `json:"window"`
-	VoteRandomness          float64       `json:"vote_randomness"`
-	ResyncSec               time.Duration `json:"resync_sec"`
-	MockVote                int           `json:"mock_vote"`
-	ConstantSpeedSec        int           `json:"const_speed_sec"`
+	Participation           float64 `json:"participation"`
+	PrioritizeParticipation bool    `json:"prioritize_participation"`
+	ParticipationMode       string  `json:"participation_mode"`
+	ParticipationYes        float64 `json:"participation_yes"`
+	ParticipationNo         float64 `json:"participation_no"`
+	ApprovalMode            string  `json:"approval_mode"`
+	ApprovalUpper           float64 `json:"approval_upper"`
+	ApprovalLower           float64 `json:"approval_lower"`
+	Filter                  string  `json:"filter"`
 }
 
 func (vc *VoterConfig) EvaluateTargetApproval(vig *VotesInfoGroup) (targetApproval float64) {
@@ -227,130 +161,70 @@ func getTargetRateBoundaries(target, lower, upper float64) (float64, string) {
 
 func (vc *VoterConfig) CalculateNeededVotes(participation float64, vig *VotesInfoGroup) (remainingYesVotes, remainingNoVotes float64) {
 	targetApproval := vc.EvaluateTargetApproval(vig)
-
-	switch vc.ApprovalMode {
-	case ModeAll:
-		remainingYesVotes, remainingNoVotes = calculateNeededVotesAll(targetApproval, participation, vc, vig)
-	case ModeMe:
-		remainingYesVotes, remainingNoVotes = calculateNeededVotesMe(targetApproval, participation, vc, vig)
-	case ModeParticipation:
-		remainingYesVotes, remainingNoVotes = calculateNeededVotesParticipation(vc, vig)
-	}
+	remainingYesVotes, remainingNoVotes = calculateNeededVotesAll(targetApproval, participation, vc, vig)
 	return
 }
 
-func calculateNeededVotesMe(targetApproval, participation float64, config *VoterConfig, vig *VotesInfoGroup) (neededYesVotes, neededNoVotes float64) {
-	config.printParticipationInfo()
-	config.printApprovalInfo(vig)
-	budgetTickets := participation * float64(vig.Me.Pool)
-	return neededVotes(targetApproval, budgetTickets, vig.Me, vig)
-}
-
-func neededVotes(targetApproval, budgetTickets float64, targetVotesInfo VotesInfo, vig *VotesInfoGroup) (neededYesVotes, neededNoVotes float64) {
+func neededVotes(targetApproval, budgetTickets float64, targetVotesInfo VotesInfo, vig *VotesInfoGroup, config *VoterConfig) (neededYesVotes, neededNoVotes float64) {
 	ticketsLeftParticipation := budgetTickets - float64(vig.Me.All())
 	v := targetVotesInfo
-
 	yes, no := float64(v.Yes), float64(v.No)
 	highestApproval := (ticketsLeftParticipation + yes) / budgetTickets
 	lowestApproval := yes / budgetTickets
 	if targetApproval > highestApproval {
 		neededYesVotes = ticketsLeftParticipation
 		neededNoVotes = 0
-		fmt.Printf("\t- Target approval greater than highest approval... assigning all tickets to yes...  needed votes: yes %v  no %v\n", math.Round(ticketsLeftParticipation), 0)
+		fmt.Printf("- target approval greater than highest approval... %v yes votes needed\n", math.Round(ticketsLeftParticipation))
 	} else if targetApproval < lowestApproval {
 		neededYesVotes = 0
 		neededNoVotes = ticketsLeftParticipation
-		fmt.Printf("\t- Target approval lesser than lowest approval... assigning all tickets to no...  needed votes: yes %v  no %v\n", 0, math.Round(ticketsLeftParticipation))
+		fmt.Printf("- target approval lesser than lowest approval... %v no votes needed\n", math.Round(ticketsLeftParticipation))
 	} else {
 		targetYesVotes := targetApproval * budgetTickets
 		neededYesVotes = targetYesVotes - yes
 		neededNoVotes = (budgetTickets - targetYesVotes) - no
 	}
-
+	config.printApprovalInfo(vig)
 	approvalCalculations(vig, budgetTickets, ticketsLeftParticipation)
-	fmt.Printf("needed votes: yes: %.f no: %.f total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
+	fmt.Printf("- needed votes: yes: %.f no: %.f total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
 		math.Round(neededYesVotes)+math.Round(neededNoVotes))
 	return
 }
 
 func calculateNeededVotesAll(targetApproval, participation float64, config *VoterConfig, vig *VotesInfoGroup) (neededYesVotes, neededNoVotes float64) {
-	config.printParticipationInfo()
-	config.printApprovalInfo(vig)
-	var highestPossibleApprovalSolo, lowestPossibleApprovalSolo, meAll, mePool, totalYes, totalAll float64
-
-	me, total := vig.Me, vig.Total()
-	meAll, mePool = float64(me.All()), float64(me.Pool)
-	totalYes, totalAll = float64(total.Yes), float64(total.All())
-
-	// derive approvals if all "me" remaining tickets are used
-	unusedTickets := mePool - meAll
-	highestPossibleApprovalSolo = math.Round(((totalYes+unusedTickets)/(totalAll+unusedTickets))*1000) / 1000
-	lowestPossibleApprovalSolo = math.Round(totalYes/(totalAll+unusedTickets)*1000) / 1000
-
-	if targetApproval > highestPossibleApprovalSolo && !config.PrioritizeParticipation {
-		fmt.Printf("\t- Approval: ame %v-%v... target approval greater "+
-			"than highest approval... assigning all tickets to yes...  needed votes: yes %v  no %v \n", lowestPossibleApprovalSolo,
-			highestPossibleApprovalSolo, math.Round(unusedTickets), 0)
-		neededYesVotes = unusedTickets
-		neededNoVotes = 0
-		return
-	} else if targetApproval < lowestPossibleApprovalSolo {
-		fmt.Printf("\t- Target approval lesser than lowest approval... assigning all tickets to no...  needed votes: yes %v  no %v ", 0, math.Round(unusedTickets))
-		neededYesVotes = 0
-		neededNoVotes = unusedTickets
-		return
-	}
+	me := vig.Me
+	var mePool = float64(me.Pool)
 
 	budgetTickets := (participation * mePool) + float64(vig.Public.All())
-	neededYesVotes, neededNoVotes = neededVotes(targetApproval, budgetTickets, vig.Total(), vig)
-	return
-}
-
-// calculateNeededVotesParticipation calculates and returns the needed votes when approval mode is set to "participation"
-// and the participation_yes and participation_no configurations are set.
-func calculateNeededVotesParticipation(proposalConfig *VoterConfig, vig *VotesInfoGroup) (neededYesVotes, neededNoVotes float64) {
-	partYes, partNo := proposalConfig.ParticipationYes, proposalConfig.ParticipationNo
-	fmt.Printf("\t- Participation(Config: %.4f%%, Yes %.4f%%, No %.4f%%), Current participation %.4f%%\n",
-		(partYes+partNo)*100, partYes*100, partNo*100, (float64(vig.Me.All())/float64(vig.Me.Pool))*100)
-
-	totalNeededYesVotes := partYes * float64(vig.Me.Pool)
-	totalNeededNoVotes := partNo * float64(vig.Me.Pool)
-	appTarget := totalNeededYesVotes / (totalNeededYesVotes + totalNeededNoVotes)
-
-	currentApproval := 0.0
-	if vig.Me.All() > 0 {
-		currentApproval = float64(vig.Me.Yes / vig.Me.All())
-	}
-	fmt.Printf("\t- Approval(mode: %s,  target %.4f%%), Current Approval %.4f%%\n", proposalConfig.ApprovalMode,
-		appTarget*100, currentApproval*100)
-
-	allNeededVotes := totalNeededYesVotes + totalNeededNoVotes
-	leftToVote := allNeededVotes - float64(vig.Me.All())
-	approvalCalculations(vig, allNeededVotes, leftToVote)
-
-	neededYesVotes = math.Round(totalNeededYesVotes - float64(vig.Me.Yes))
-	neededNoVotes = math.Round(totalNeededNoVotes - float64(vig.Me.No))
-	if neededYesVotes <= 0 {
-		neededYesVotes = 0
-	}
-
-	if neededNoVotes <= 0 {
+	ticketsLeftParticipation := budgetTickets - float64(vig.Me.All())
+	v := vig.Total()
+	yes, no := float64(v.Yes), float64(v.No)
+	highestApproval := (ticketsLeftParticipation + yes) / budgetTickets
+	lowestApproval := yes / budgetTickets
+	if targetApproval > highestApproval {
+		neededYesVotes = ticketsLeftParticipation
 		neededNoVotes = 0
+		fmt.Printf("- target approval greater than highest approval... %v yes votes needed\n", math.Round(ticketsLeftParticipation))
+	} else if targetApproval < lowestApproval {
+		neededYesVotes = 0
+		neededNoVotes = ticketsLeftParticipation
+		fmt.Printf("- target approval lesser than lowest approval... %v no votes needed\n", math.Round(ticketsLeftParticipation))
+	} else {
+		targetYesVotes := targetApproval * budgetTickets
+		neededYesVotes = targetYesVotes - yes
+		neededNoVotes = (budgetTickets - targetYesVotes) - no
 	}
-
-	fmt.Printf("\t- Voted: (Yes: %d  No %d),  Needed Votes: (Yes: %.f  No: %.f  Total: %.f)\n", vig.Me.Yes,
-		vig.Me.No, neededYesVotes, neededNoVotes, neededYesVotes+neededNoVotes)
-	return neededYesVotes, neededNoVotes
-}
-
-func (vc *VoterConfig) printParticipationInfo() {
-	fmt.Printf("participation %.2f%% \n", vc.Participation*100)
+	approvalCalculations(vig, budgetTickets, ticketsLeftParticipation)
+	config.printApprovalInfo(vig)
+	fmt.Printf("- needed votes: yes: %.f no: %.f total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
+		math.Round(neededYesVotes)+math.Round(neededNoVotes))
+	return
 }
 
 func (vc *VoterConfig) printApprovalInfo(vig *VotesInfoGroup) {
 	_, boundaryInfo := getTargetRateBoundaries(vig.Public.ApprovalRate(), vc.ApprovalLower, vc.ApprovalUpper)
 	minYes, minNo, minPart, total := evaluateMinimumVotes(vig, vc)
-	fmt.Printf("approval target: %s them %.4f%% (%v) reach target yes %.f no %.f total %.f part %.4f%%\n", vc.approvalRange(),
+	fmt.Printf("- approval target: %s them %.2f%% (%v) reach target yes %.f no %.f total %.f part %.2f%%\n", vc.approvalRange(),
 		vig.Public.ApprovalRate()*100, boundaryInfo, math.Round(minYes), math.Round(minNo), total, minPart*100)
 }
 
@@ -409,21 +283,21 @@ func approvalCalculations(vig *VotesInfoGroup, budgetTickets, ticketsLeftPartici
 	yes := float64(total.Yes)
 	budgetTicketsAll := budgetTickets + float64(public.All())
 	lowestApproval, highestApproval := yes/budgetTicketsAll, (ticketsLeftParticipation+yes)/budgetTicketsAll
-	pme := fmt.Sprintf("%.4f%%-%.4f%%", toPercent(lowestApproval), toPercent(highestApproval))
+	pme := fmt.Sprintf("%.2f%%-%.2f%%", toPercent(lowestApproval), toPercent(highestApproval))
 
 	totalAll, unusedTicketsMe := float64(total.All()), float64(me.Pool)-float64(me.All())
 	lowestPossibleApprovalSolo := math.Round(yes/(totalAll+unusedTicketsMe)*10000) / 10000
 	highestPossibleApprovalSolo := math.Round(((yes+unusedTicketsMe)/(totalAll+unusedTicketsMe))*10000) / 10000
-	ame := fmt.Sprintf("%.4f%%-%.4f%%", toPercent(lowestPossibleApprovalSolo), toPercent(highestPossibleApprovalSolo))
+	ame := fmt.Sprintf("%.2f%%-%.2f%%", toPercent(lowestPossibleApprovalSolo), toPercent(highestPossibleApprovalSolo))
 
 	pool, all := float64(total.Pool), float64(total.All())
 	unusedTickets := pool - all
 	highestPossibleApproval := (unusedTickets + yes) / pool
 	lowestPossibleApproval := yes / pool
-	aall := fmt.Sprintf("%.4f%%-%.4f%%", toPercent(roundUpFour(lowestPossibleApproval)),
+	aall := fmt.Sprintf("%.2f%%-%.2f%%", toPercent(roundUpFour(lowestPossibleApproval)),
 		toPercent(roundUpFour(highestPossibleApproval)))
 
-	fmt.Printf("approval calcs: pme %s  ame %s  aall %s\n", pme, ame, aall)
+	fmt.Printf("- approval calcs: pme %s  ame %s  aall %s\n", pme, ame, aall)
 }
 
 func toPercent(value float64) float64 {
@@ -436,9 +310,9 @@ func roundUpFour(value float64) float64 {
 
 func (vc *VoterConfig) approvalRange() string {
 	if vc.ApprovalLower == vc.ApprovalUpper {
-		return fmt.Sprintf("%.4f%%", vc.ApprovalLower*100)
+		return fmt.Sprintf("%.2f%%", vc.ApprovalLower*100)
 	}
-	return fmt.Sprintf("%.4f%%-%.4f%%", vc.ApprovalLower*100, vc.ApprovalUpper*100)
+	return fmt.Sprintf("%.2f%%-%.2f%%", vc.ApprovalLower*100, vc.ApprovalUpper*100)
 }
 
 type VoteStats struct {

@@ -119,6 +119,7 @@ type config struct {
 	isMirror      bool
 	hoursPrior    time.Duration // Converted HoursPrior
 	startTime     time.Time
+	endTime       time.Time
 	blocksPerHour uint64
 
 	// Test only

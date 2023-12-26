@@ -12,14 +12,12 @@ func viewTime(t time.Time) string {
 }
 
 func formatDuration(d time.Duration) string {
-	// Extract seconds with a single decimal place
-	seconds := float64(d) / float64(time.Second)
-
-	// Format the seconds with one decimal place
-	formattedSeconds := fmt.Sprintf("%.1f", seconds)
-
-	// Return the formatted duration string
-	return formattedSeconds + "s"
+	if d > time.Second {
+		seconds := float64(d) / float64(time.Second)
+		return fmt.Sprintf("%.1fs", seconds)
+	}
+	miliSecond := float64(d) / float64(time.Millisecond)
+	return fmt.Sprintf("%.1fms", miliSecond)
 }
 
 func findMax(nums []int) int {

@@ -12,9 +12,30 @@ import (
 	"time"
 )
 
+type ReqVoteConfig struct {
+	YesRate float64
+	NoRate  float64
+	YesVote int
+	NoVote  int
+	me      *VoteStats
+	them    *VoteStats
+}
+
+func (r *ReqVoteConfig) TargetApproval() float64 {
+	return r.YesRate / r.Participation()
+}
+
+func (r *ReqVoteConfig) Total() int {
+	return r.YesVote + r.NoVote
+}
+
+func (r *ReqVoteConfig) Participation() float64 {
+	return r.YesRate + r.NoRate
+}
+
 func (p *piv) tallyTable(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("tally: not enough arguments %v", args)
+	if len(args) == 0 {
+		return fmt.Errorf("tally-table: not enough arguments %v", args)
 	}
 	var token = args[0]
 	fmt.Printf("Getting stats table... \n")
@@ -55,12 +76,90 @@ func (p *piv) tallyTable(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = p.getNeededVotes(&defaultVoter, dr, grouping)
+	rvc, err := p.getConfigVoter(args, rr, ctres)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("- config yes %.2f%% no %.2f%% (participation %.2f%%, target approval %.2f%%)\n",
+		rvc.YesRate*100, rvc.NoRate*100, rvc.Participation()*100, rvc.TargetApproval()*100)
+	voteConf := defaultVoter
+	voteConf.Participation = rvc.Participation()
+	_, _, err = p.getNeededVotes(&voteConf, dr, grouping)
 	return err
 }
 
-func (p *piv) getNeededVotes(proposalConfig *VoterConfig, proposal *tkv1.DetailsReply,
-	vig *VotesInfoGroup) (int32, int32, error) {
+func (p *piv) getConfigVoter(args []string, rr *tkv1.ResultsReply, ctres *pb.CommittedTicketsResponse) (*ReqVoteConfig, error) {
+	if len(args) == 6 {
+		if args[2] != voteOptionYes {
+			return nil, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+		if args[4] != voteOptionNo {
+			return nil, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+	} else if len(args) == 4 {
+		if args[2] != voteOptionMirror {
+			return nil, fmt.Errorf("invalid argument, see the example to correct it")
+		}
+	} else {
+		return nil, fmt.Errorf("invalid argument, see the example to correct it")
+	}
+	me, them, err := p.statsVotes(rr, ctres)
+	if err != nil {
+		return nil, err
+	}
+	var mode = args[1]
+	var rvc = &ReqVoteConfig{
+		me:   me,
+		them: them,
+	}
+	switch mode {
+	case voteModeNumber:
+		if len(args) == 6 {
+			rvc.YesVote, _ = strconv.Atoi(args[3])
+			rvc.NoVote, _ = strconv.Atoi(args[5])
+			rvc.YesRate = float64(rvc.YesVote) / float64(me.Total())
+			rvc.NoRate = float64(rvc.NoVote) / float64(me.Total())
+		}
+		if len(args) == 4 {
+			p.cfg.isMirror = true
+			total, _ := strconv.Atoi(args[3])
+			rvc.YesVote = int(float64(total) * them.Rate())
+			rvc.NoVote = total - rvc.YesVote
+			rvc.YesRate = float64(rvc.YesVote) / float64(me.Total())
+			rvc.NoRate = float64(rvc.NoVote) / float64(me.Total())
+		}
+		if rvc.Total() > me.Total() {
+			return nil, fmt.Errorf("entered amount(%d) is greater than your total own votes: %d", rvc.Total(), me.Total())
+		}
+
+	case voteModePercent:
+		if len(args) == 6 {
+			rvc.YesRate, _ = strconv.ParseFloat(args[3], 64)
+			rvc.NoRate, _ = strconv.ParseFloat(args[5], 64)
+		}
+		if len(args) == 4 {
+			p.cfg.isMirror = true
+			totalRate, _ := strconv.ParseFloat(args[3], 64)
+			rvc.YesRate = totalRate * them.Rate()
+			rvc.NoRate = totalRate - rvc.YesRate
+		}
+		if rvc.YesRate < 0 || rvc.NoRate < 0 {
+			return nil, fmt.Errorf("rate must be > 0 and < 1")
+		}
+		if rvc.Participation() > 1 {
+			return nil, fmt.Errorf("total rate yes and rate no is greater than 1")
+		}
+		roughYes := float64(me.Total()) * rvc.YesRate
+		roughNo := float64(me.Total()) * rvc.NoRate
+		rvc.YesVote = int(math.Round(roughYes))
+		rvc.NoVote = int(math.Round(roughNo))
+	default:
+		return nil, fmt.Errorf("mode [%s] is not supported", mode)
+	}
+	return rvc, nil
+}
+
+func (p *piv) getNeededVotes(proposalConfig *VoterConfig, proposal *tkv1.DetailsReply, vig *VotesInfoGroup) (int32, int32, error) {
 	targetParticipation := participationTarget(proposalConfig.Participation, proposalConfig.ParticipationMode, vig)
 
 	if targetParticipation == 0 {
@@ -85,14 +184,12 @@ func (p *piv) getNeededVotes(proposalConfig *VoterConfig, proposal *tkv1.Details
 
 	predictedParticipationMeRound := math.Round(predictedParticipationMe*10000) / 10000
 	targetApproval := proposalConfig.EvaluateTargetApproval(vig)
-
 	if vig.Me.ParticipationRate() >= targetParticipation {
-		fmt.Printf("\t- Target participation %.4f%%, Current participation %.4f%%, Predicted participation %.4f%%\n",
+		fmt.Printf("- target participation %.2f%%, current participation %.2f%%, predicted participation %.2f%%\n",
 			targetParticipation*100, vig.Me.ParticipationRate()*100, predictedParticipationMeRound*100)
-		fmt.Printf("\t- Target approval %v%%, Current approval %v%%\n", targetApproval*100, vig.Total().ApprovalRate()*100)
+		fmt.Printf("- target approval %v%%, current approval %v%%\n", targetApproval*100, vig.Total().ApprovalRate()*100)
 		return 0, 0, fmt.Errorf("participation target has been reached")
 	}
-
 	neededYesVotes, neededNoVotes := proposalConfig.CalculateNeededVotes(targetParticipation, vig)
 	neededYesVotes = math.Round(neededYesVotes)
 	neededNoVotes = math.Round(neededNoVotes)
@@ -155,7 +252,6 @@ func group(eligibleTickets, votedYes, votedNo []*pb.CommittedTicketsResponse_Tic
 }
 
 func (p *piv) printTallyTable(proposal *tkv1.DetailsReply, grouping *VotesInfoGroup) error {
-
 	bestBlock, err := p.GetBestBlock()
 	if err != nil {
 		return err
@@ -175,20 +271,16 @@ func (p *piv) printTallyTable(proposal *tkv1.DetailsReply, grouping *VotesInfoGr
 // completed the proposal.
 func blockInfoSummary(voteDetails *tkv1.VoteDetails, latestBlock int32) (string, error) {
 	remainingBlocks := int32(voteDetails.EndBlockHeight) - latestBlock
-	remainingVoteDuration := remainingTimeDays(remainingBlocks)
+	timeLeftInVote := time.Duration(remainingBlocks) * activeNetParams.TargetTimePerBlock
 	percentageTimeComplete := getTimePercentageComplete(voteDetails.StartBlockHeight, voteDetails.EndBlockHeight, latestBlock)
 	remainingVotingWindow := fmt.Sprintf("%.2f%%", percentageTimeComplete)
-	return fmt.Sprintf("%d blocks remaining (%s), %s done", remainingBlocks, remainingVoteDuration, remainingVotingWindow), nil
-}
-
-// getRemainingTimeDays returns the remaining completion time of a proposal
-// in ddhhmm format as a string
-func remainingTimeDays(remainingBlock int32) string {
-	timeLeftInVote := time.Duration(remainingBlock) * activeNetParams.TargetTimePerBlock
-	return timeLeftInVote.String()
+	estEndtime := time.Now().Add(timeLeftInVote)
+	return fmt.Sprintf("#%d, %d blocks remaining (%s at %s), %s done",
+		latestBlock, remainingBlocks, timeLeftInVote, viewTime(estEndtime), remainingVotingWindow), nil
 }
 
 func _printTallyTable(vig *VotesInfoGroup, voteDetails *tkv1.VoteDetails, currentBlockHeight int32) error {
+	defer fmt.Println()
 	percentDecimal := func(all uint, pool int) float64 {
 		if pool == 0 {
 			return 0
@@ -278,7 +370,7 @@ func getPredictedParticipation(participation float64, startHeight,
 
 	predictedParticipation = math.Round((participation*float64(participationMultiplier))*10000) / 10000
 	if predictedParticipation > 1 {
-		fmt.Printf("\t- PredictedParticipation: %.4f%%, setting to 100%%\n", predictedParticipation*100)
+		//fmt.Printf("\t- PredictedParticipation: %.4f%%, setting to 100%%\n", predictedParticipation*100)
 		predictedParticipation = 1
 	}
 	return
@@ -314,8 +406,6 @@ func participationTarget(participation float64, participationMode string, vig *V
 		fmt.Printf("Target tickets: %d, Left to vote: %d, neededMe: %.3f%%", targetTickets, int(leftToVote), part*100)
 		return part
 	}
-
-	defer fmt.Println()
 
 	switch participationMode {
 	case ModeAll:
