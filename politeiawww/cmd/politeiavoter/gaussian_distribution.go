@@ -110,6 +110,9 @@ func (g *Gaussian) GenerateTime(votesToCast []*voteAlarm, milestone time.Time) (
 		}
 		if float64(randCheck.Uint64())/float64(g.timeFrame) < y/g.maxFx {
 			t, err := g.timePoint(frameIndex)
+			if t.Unix() <= milestone.Unix() {
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}
