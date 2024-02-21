@@ -95,7 +95,8 @@ type config struct {
 	// voting period and is set to a default of 12 hours. These extra
 	// hours, prior to expiration gives the user some additional margin to
 	// correct failures.
-	HoursPrior *uint64 `long:"hoursprior" description:"Number of hours prior to the end of the voting period that all votes will be trickled in by."`
+	HoursPrior      *uint64 `long:"hoursprior" description:"Number of hours prior to the end of the voting period that all votes will be trickled in by."`
+	StartTimeOffset string  `long:"startimeoffset" description:"The duration offset from the start vote time (eg. 53h30m1s). Used with --resume"`
 
 	ClientCert string `long:"clientcert" description:"Path to TLS certificate for client authentication"`
 	ClientKey  string `long:"clientkey" description:"Path to TLS client authentication key"`
@@ -113,14 +114,15 @@ type config struct {
 
 	IntervalStatsTable int `long:"intervalstatstable" default:"60" description:"time in minute between displaying stats table when voting, zero will ignore the displaying"`
 
-	voteDir       string
-	dial          func(string, string) (net.Conn, error)
-	voteDuration  time.Duration // Parsed VoteDuration
-	isMirror      bool
-	hoursPrior    time.Duration // Converted HoursPrior
-	startTime     time.Time
-	endTime       time.Time
-	blocksPerHour uint64
+	voteDir         string
+	dial            func(string, string) (net.Conn, error)
+	voteDuration    time.Duration // Parsed VoteDuration
+	startTimeOffset time.Duration // Parsed StartTimeOffset
+	isMirror        bool
+	hoursPrior      time.Duration // Converted HoursPrior
+	startTime       time.Time
+	endTime         time.Time
+	blocksPerHour   uint64
 
 	// Test only
 	testing        bool
@@ -523,6 +525,14 @@ func loadConfig(appName string) (*config, []string, error) {
 		cfg.voteDuration, err = time.ParseDuration(cfg.VoteDuration)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid --voteduration %w", err)
+		}
+	}
+
+	if cfg.StartTimeOffset != "" {
+		// Verify we can parse the duration
+		cfg.startTimeOffset, err = time.ParseDuration(cfg.StartTimeOffset)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid --starttimeoffset %w", err)
 		}
 	}
 

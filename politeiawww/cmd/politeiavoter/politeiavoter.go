@@ -596,7 +596,13 @@ func (p *piv) voteDetails(token, serverPubKey string) (*tkv1.DetailsReply, error
 		responseBody, err = p.makeRequest(http.MethodPost,
 			tkv1.APIRoute, tkv1.RouteDetails, d)
 		if err != nil {
-			return nil, err
+			fmt.Printf("fetching details failed: %v. Retrying... \n", err)
+			time.Sleep(time.Second * 5)
+			responseBody, err = p.makeRequest(http.MethodPost,
+				tkv1.APIRoute, tkv1.RouteDetails, d)
+			if err != nil {
+				return nil, err
+			}
 		}
 		p.cache.Set(cacheKey, responseBody)
 	}
@@ -1180,7 +1186,7 @@ func (p *piv) _processVote(token string, qtyY, qtyN int) error {
 	}
 
 	eligibleLen := len(eligible)
-	if eligibleLen == 0 {
+	if eligibleLen == 0 && p.cfg.EmulateVote == 0 {
 		return fmt.Errorf("no eligible tickets found")
 	}
 	r := rand.New(rand.NewSource(seed))
@@ -1251,15 +1257,31 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 		blocksLeft     = int64(vs.EndBlockHeight) - int64(vs.BestBlock)
 		blockTime      = activeNetParams.TargetTimePerBlock
 		timeLeftInVote = time.Duration(blocksLeft) * blockTime
-		timePassInVote = time.Duration(int64(vs.BestBlock)-int64(vs.StartBlockHeight)) * blockTime
 	)
-	now := time.Now()
-	p.cfg.startTime = now
-	p.cfg.endTime = now.Add(timeLeftInVote)
-	if p.cfg.Resume {
-		p.cfg.startTime = now.Add(-timePassInVote)
+	startBlock, err := p.wallet.BlockInfo(context.Background(), &pb.BlockInfoRequest{
+		BlockHeight: int32(vs.StartBlockHeight),
+	})
+	voteStartTime := time.Unix(startBlock.Timestamp, 0)
+	if err != nil {
+		return err
 	}
-	fmt.Println("start time: ", p.cfg.startTime, vs.BestBlock, blockTime)
+	bestBlock, err := p.wallet.BlockInfo(context.Background(), &pb.BlockInfoRequest{
+		BlockHeight: int32(vs.BestBlock),
+	})
+	if err != nil {
+		return err
+	}
+	p.cfg.startTime = time.Now()
+	p.cfg.endTime = time.Unix(bestBlock.Timestamp, 0).Add(timeLeftInVote)
+	if p.cfg.Resume {
+		p.cfg.startTime = voteStartTime
+		if p.cfg.startTimeOffset > 0 {
+			p.cfg.startTime = voteStartTime.Add(-p.cfg.startTimeOffset)
+		}
+	} else {
+		lateVoteTime := p.cfg.startTime.Sub(voteStartTime)
+		fmt.Printf("start vote now, late (%s) with the proposal vote time\n", roundTime(lateVoteTime))
+	}
 	switch {
 	case p.cfg.voteDuration.Seconds() > 0:
 		// A vote duration was provided
@@ -1274,7 +1296,7 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 		// the remaining time in the vote minus the hours prior setting.
 		p.cfg.voteDuration = timeLeftInVote - p.cfg.hoursPrior
 		if p.cfg.Resume {
-			p.cfg.voteDuration = timeLeftInVote + timePassInVote - p.cfg.hoursPrior
+			p.cfg.voteDuration = p.cfg.endTime.Sub(p.cfg.startTime) - p.cfg.hoursPrior
 		}
 
 		// Force the user to manually set the vote duration when the
@@ -1427,7 +1449,7 @@ func (p *piv) getTotalVotes(token string) (me, them *VoteStats, err error) {
 		return nil, nil, fmt.Errorf("ticket pool verification: %v %v",
 			token, err)
 	}
-	if len(ctres.TicketAddresses) == 0 {
+	if len(ctres.TicketAddresses) == 0 && p.cfg.EmulateVote == 0 {
 		return nil, nil, fmt.Errorf("no eligible tickets found")
 	}
 

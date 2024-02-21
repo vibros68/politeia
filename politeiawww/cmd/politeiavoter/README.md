@@ -231,3 +231,6 @@ algorithm. without `--gaussian` using `bunches` mode as the upstream does
 
 Do fake vote. Purpose for testing
 
+* add --starttimeoffset=53h30m1s (for eg.), used to add duration offset to start vote time
+  (affect with --resume)
+

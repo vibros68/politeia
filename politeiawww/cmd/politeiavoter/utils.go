@@ -20,6 +20,10 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%.1fms", miliSecond)
 }
 
+func roundTime(dur time.Duration) time.Duration {
+	return (dur / time.Second) * time.Second
+}
+
 func findMax(nums []int) int {
 	var max int
 	for _, num := range nums {

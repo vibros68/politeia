@@ -165,32 +165,6 @@ func (vc *VoterConfig) CalculateNeededVotes(participation float64, vig *VotesInf
 	return
 }
 
-func neededVotes(targetApproval, budgetTickets float64, targetVotesInfo VotesInfo, vig *VotesInfoGroup, config *VoterConfig) (neededYesVotes, neededNoVotes float64) {
-	ticketsLeftParticipation := budgetTickets - float64(vig.Me.All())
-	v := targetVotesInfo
-	yes, no := float64(v.Yes), float64(v.No)
-	highestApproval := (ticketsLeftParticipation + yes) / budgetTickets
-	lowestApproval := yes / budgetTickets
-	if targetApproval > highestApproval {
-		neededYesVotes = ticketsLeftParticipation
-		neededNoVotes = 0
-		fmt.Printf("- target approval greater than highest approval... %v yes votes needed\n", math.Round(ticketsLeftParticipation))
-	} else if targetApproval < lowestApproval {
-		neededYesVotes = 0
-		neededNoVotes = ticketsLeftParticipation
-		fmt.Printf("- target approval lesser than lowest approval... %v no votes needed\n", math.Round(ticketsLeftParticipation))
-	} else {
-		targetYesVotes := targetApproval * budgetTickets
-		neededYesVotes = targetYesVotes - yes
-		neededNoVotes = (budgetTickets - targetYesVotes) - no
-	}
-	config.printApprovalInfo(vig)
-	approvalCalculations(vig, budgetTickets, ticketsLeftParticipation)
-	fmt.Printf("- needed votes: yes: %.f no: %.f total: %.f\n", math.Round(neededYesVotes), math.Round(neededNoVotes),
-		math.Round(neededYesVotes)+math.Round(neededNoVotes))
-	return
-}
-
 func calculateNeededVotesAll(targetApproval, participation float64, config *VoterConfig, vig *VotesInfoGroup) (neededYesVotes, neededNoVotes float64) {
 	me := vig.Me
 	var mePool = float64(me.Pool)
