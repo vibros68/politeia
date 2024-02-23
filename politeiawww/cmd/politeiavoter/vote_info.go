@@ -187,6 +187,12 @@ func calculateNeededVotesAll(targetApproval, participation float64, config *Vote
 		targetYesVotes := targetApproval * budgetTickets
 		neededYesVotes = targetYesVotes - yes
 		neededNoVotes = (budgetTickets - targetYesVotes) - no
+		if neededYesVotes < 0 {
+			neededYesVotes = 0
+		}
+		if neededNoVotes < 0 {
+			neededNoVotes = 0
+		}
 	}
 	approvalCalculations(vig, budgetTickets, ticketsLeftParticipation)
 	config.printApprovalInfo(vig)

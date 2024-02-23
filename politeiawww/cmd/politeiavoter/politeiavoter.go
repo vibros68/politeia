@@ -1391,11 +1391,14 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 	}
 
 	if !p.cfg.isMirror {
+		unvoted := total - (votedY + votedN)
 		if voteYes < votedY {
-			return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d yes but voted %d from previous session", voteYes, votedY)
+			fmt.Printf("WARN: resume : require vote %d yes but voted %d from previous session \n", voteYes, votedY)
+			return 0, unvoted, votedY + votedN, total, nil
 		}
 		if voteNo < votedN {
-			return 0, 0, 0, 0, fmt.Errorf("resume: require vote %d no but voted %d from previous session", voteNo, votedN)
+			fmt.Printf("WARN: resume : require vote %d no but voted %d from previous session\n", voteNo, votedN)
+			return unvoted, 0, votedY + votedN, total, nil
 		}
 	}
 	qtyYes = voteYes - votedY
