@@ -299,24 +299,30 @@ func (p *piv) testMaybeFail(b interface{}) ([]byte, error) {
 	return jcbr, nil
 }
 
-func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, retry int) (*http.Response, error) {
+func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, retry int) (*http.Response, []byte, error) {
 	var startTime = time.Now()
 	ctx, cancel := context.WithTimeout(p.ctx, time.Second*20)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, fullRoute,
 		bytes.NewReader(requestBody))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req.Header.Set("User-Agent", p.userAgent)
 	r, err := p.client.Do(req)
+	defer func() {
+		r.Body.Close()
+	}()
+
+	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), route, r.StatusCode, formatDuration(time.Since(startTime)))
+	fmt.Println(err)
 	if err != nil && retry < 3 {
 		fmt.Printf("*failed: %v. trying next request", err)
 		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
 	}
-	return r, err
+	return r, responseBody, err
 }
 
 func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, error) {
@@ -354,18 +360,14 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 		return p.testMaybeFail(b)
 	}
 
-	r, err := p.retryRequest(method, fullRoute, api+route, requestBody, 0)
+	r, responseBody, err := p.retryRequest(method, fullRoute, api+route, requestBody, 0)
 	if err != nil {
 		return nil, ErrRetry{
 			At:  "p.client.Do(req)",
 			Err: err,
 		}
 	}
-	defer func() {
-		r.Body.Close()
-	}()
 
-	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 
 	switch r.StatusCode {
