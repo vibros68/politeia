@@ -299,10 +299,30 @@ func (p *piv) testMaybeFail(b interface{}) ([]byte, error) {
 	return jcbr, nil
 }
 
+func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, retry int) (*http.Response, error) {
+	var startTime = time.Now()
+	ctx, cancel := context.WithTimeout(p.ctx, time.Second*20)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, fullRoute,
+		bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", p.userAgent)
+	r, err := p.client.Do(req)
+	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), route, r.StatusCode, formatDuration(time.Since(startTime)))
+	if err != nil && retry < 3 {
+		fmt.Printf("*failed: %v. trying next request", err)
+		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
+	}
+	return r, err
+}
+
 func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, error) {
 	var requestBody []byte
 	var queryParams string
-	var startTime = time.Now()
+
 	if b != nil {
 		if method == http.MethodGet {
 			// GET requests don't have a request body; instead we will populate
@@ -333,14 +353,8 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	if p.cfg.testing {
 		return p.testMaybeFail(b)
 	}
-	req, err := http.NewRequestWithContext(p.ctx, method, fullRoute,
-		bytes.NewReader(requestBody))
-	if err != nil {
-		return nil, err
-	}
 
-	req.Header.Set("User-Agent", p.userAgent)
-	r, err := p.client.Do(req)
+	r, err := p.retryRequest(method, fullRoute, api+route, requestBody, 0)
 	if err != nil {
 		return nil, ErrRetry{
 			At:  "p.client.Do(req)",
@@ -350,7 +364,7 @@ func (p *piv) makeRequest(method, api, route string, b interface{}) ([]byte, err
 	defer func() {
 		r.Body.Close()
 	}()
-	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), api+route, r.StatusCode, formatDuration(time.Since(startTime)))
+
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	log.Tracef("Response: %v %v", r.StatusCode, string(responseBody))
 
