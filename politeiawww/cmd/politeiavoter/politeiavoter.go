@@ -317,7 +317,6 @@ func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, 
 
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), route, r.StatusCode, formatDuration(time.Since(startTime)))
-	fmt.Println(err)
 	if err != nil && retry < 3 {
 		fmt.Printf("*failed: %v. trying next request", err)
 		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
@@ -1409,12 +1408,26 @@ func (p *piv) validateArguments(args []string) (qtyYes, qtyNo, voted, total int,
 	if !p.cfg.isMirror {
 		unvoted := total - (votedY + votedN)
 		if voteYes < votedY {
-			fmt.Printf("WARN: resume : require vote %d yes but voted %d from previous session \n", voteYes, votedY)
-			return 0, unvoted, votedY + votedN, total, nil
+			suggestYes := votedY
+			suggestNo := votedN + unvoted
+			var suggestMsg string
+			if mode == voteModeNumber {
+				suggestMsg = fmt.Sprintf("suggest: yes %d no %d", suggestYes, suggestNo)
+			} else {
+				suggestMsg = fmt.Sprintf("suggest: yes %.2f no %.2f", float64(suggestYes)/float64(total), float64(suggestNo)/float64(total))
+			}
+			fmt.Printf("WARN: resume : require vote %d yes but voted %d from previous session %s \n", voteYes, votedY, suggestMsg)
 		}
 		if voteNo < votedN {
-			fmt.Printf("WARN: resume : require vote %d no but voted %d from previous session\n", voteNo, votedN)
-			return unvoted, 0, votedY + votedN, total, nil
+			suggestYes := votedY + unvoted
+			suggestNo := votedN
+			var suggestMsg string
+			if mode == voteModeNumber {
+				suggestMsg = fmt.Sprintf("suggest: yes %d no %d", suggestYes, suggestNo)
+			} else {
+				suggestMsg = fmt.Sprintf("suggest: yes %.2f no %.2f", float64(suggestYes)/float64(total), float64(suggestNo)/float64(total))
+			}
+			fmt.Printf("WARN: resume : require vote %d no but voted %d from previous session %s \n", voteNo, votedN, suggestMsg)
 		}
 	}
 	qtyYes = voteYes - votedY
