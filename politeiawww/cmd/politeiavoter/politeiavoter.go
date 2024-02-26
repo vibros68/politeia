@@ -310,8 +310,9 @@ func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, 
 
 	req.Header.Set("User-Agent", p.userAgent)
 	r, err := p.client.Do(req)
-	if err != nil {
-		fmt.Printf("*failed: %v. trying next request", err)
+	if err != nil && retry < 3 {
+		fmt.Printf("*failed: %v. trying next request...\n", err)
+		time.Sleep(5 * time.Second)
 		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
 	}
 	defer func() {
@@ -321,7 +322,8 @@ func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, 
 	responseBody := util.ConvertBodyToByteArray(r.Body, false)
 	fmt.Printf("*%s %s %d %s\n", strings.ToLower(method), route, r.StatusCode, formatDuration(time.Since(startTime)))
 	if err != nil && retry < 3 {
-		fmt.Printf("*failed: %v. trying next request", err)
+		fmt.Printf("*failed: %v. trying next request... \n", err)
+		time.Sleep(5 * time.Second)
 		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
 	}
 	return r, responseBody, err
