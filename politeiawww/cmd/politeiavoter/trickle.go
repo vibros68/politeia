@@ -179,7 +179,7 @@ func (p *piv) gaussianVoteAlarm(votesToCast []*voteAlarm) ([]*voteAlarm, error) 
 	fmt.Printf("Total number of votes  : %v\n", len(votesToCast))
 	fmt.Printf("Start time             : %s\n", viewTime(p.cfg.startTime))
 	fmt.Printf("Vote duration          : %v\n", voteDuration)
-	g, err := NewGaussian(math.Sqrt(p.cfg.GaussianDeviate), 0, p.cfg.startTime, p.cfg.startTime.Add(voteDuration), p.cfg.ChartCols)
+	g, err := NewGaussian(math.Sqrt(p.cfg.GaussianDeviate), 0, p.cfg.startTime, p.cfg.endTime, p.cfg.ChartCols)
 	if err != nil {
 		return nil, err
 	}

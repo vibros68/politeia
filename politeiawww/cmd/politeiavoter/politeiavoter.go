@@ -310,6 +310,10 @@ func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, 
 
 	req.Header.Set("User-Agent", p.userAgent)
 	r, err := p.client.Do(req)
+	if err != nil {
+		fmt.Printf("*failed: %v. trying next request", err)
+		return p.retryRequest(method, fullRoute, route, requestBody, retry+1)
+	}
 	defer func() {
 		r.Body.Close()
 	}()
@@ -1304,6 +1308,7 @@ func (p *piv) setupVoteDuration(vs tkv1.Summary) error {
 				"greater than the remaining time in the vote of %v",
 				p.cfg.voteDuration, timeLeftInVote)
 		}
+		p.cfg.endTime = time.Now().Add(p.cfg.voteDuration)
 
 	case p.cfg.voteDuration.Seconds() == 0:
 		// A vote duration was not provided. The vote duration is set to
