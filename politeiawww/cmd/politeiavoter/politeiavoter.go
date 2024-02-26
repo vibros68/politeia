@@ -301,7 +301,7 @@ func (p *piv) testMaybeFail(b interface{}) ([]byte, error) {
 
 func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, retry int) (*http.Response, []byte, error) {
 	var startTime = time.Now()
-	ctx, cancel := context.WithTimeout(p.ctx, time.Second*20)
+	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Minute)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, fullRoute,
 		bytes.NewReader(requestBody))
