@@ -201,6 +201,7 @@ func newPiVoter(shutdownCtx context.Context, cfg *config) (*piv, error) {
 		wallet: wallet,
 		cfg:    cfg,
 		client: &http.Client{
+			Timeout:   5 * time.Minute,
 			Transport: tr,
 			Jar:       jar,
 		},
@@ -301,9 +302,7 @@ func (p *piv) testMaybeFail(b interface{}) ([]byte, error) {
 
 func (p *piv) retryRequest(method, fullRoute, route string, requestBody []byte, retry int) (*http.Response, []byte, error) {
 	var startTime = time.Now()
-	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Minute)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, fullRoute,
+	req, err := http.NewRequestWithContext(p.ctx, method, fullRoute,
 		bytes.NewReader(requestBody))
 	if err != nil {
 		return nil, nil, err
